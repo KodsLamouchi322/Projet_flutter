@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "31612694618",
+    "project_id": "devmob-apvpedagogie",
+    "storage_bucket": "devmob-apvpedagogie.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:31612694618:android:00f44c5433660a0562e863",
+        "android_client_info": {
+          "package_name": "com.example.firebase_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrz07DcI3BeeQ6PgykrJWHw8skVxPvjEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
