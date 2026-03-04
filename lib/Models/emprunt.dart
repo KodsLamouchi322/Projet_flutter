@@ -5,6 +5,7 @@ enum StatutEmprunt { enCours, retourne, enRetard, prolonge }
 class Emprunt {
   final String id;
   final String membreId;
+  final String membreNom;
   final String livreId;
   final String livreTitre;
   final String livreAuteur;
@@ -13,12 +14,13 @@ class Emprunt {
   final DateTime dateRetourPrevue;
   final DateTime? dateRetourEffective;
   final StatutEmprunt statut;
-  final bool prolongationDemandee;
+  final int prolongations;
   final String? notes;
 
   Emprunt({
     required this.id,
     required this.membreId,
+    this.membreNom = '',
     required this.livreId,
     required this.livreTitre,
     required this.livreAuteur,
@@ -27,7 +29,7 @@ class Emprunt {
     required this.dateRetourPrevue,
     this.dateRetourEffective,
     this.statut = StatutEmprunt.enCours,
-    this.prolongationDemandee = false,
+    this.prolongations = 0,
     this.notes,
   });
 
@@ -43,6 +45,7 @@ class Emprunt {
     return Emprunt(
       id: doc.id,
       membreId: data['membreId'] ?? '',
+      membreNom: data['membreNom'] ?? '',
       livreId: data['livreId'] ?? '',
       livreTitre: data['livreTitre'] ?? '',
       livreAuteur: data['livreAuteur'] ?? '',
@@ -55,7 +58,7 @@ class Emprunt {
         (e) => e.name == (data['statut'] ?? 'enCours'),
         orElse: () => StatutEmprunt.enCours,
       ),
-      prolongationDemandee: data['prolongationDemandee'] ?? false,
+      prolongations: data['prolongations'] ?? 0,
       notes: data['notes'],
     );
   }
@@ -63,6 +66,7 @@ class Emprunt {
   Map<String, dynamic> toFirestore() {
     return {
       'membreId': membreId,
+      'membreNom': membreNom,
       'livreId': livreId,
       'livreTitre': livreTitre,
       'livreAuteur': livreAuteur,
@@ -73,7 +77,7 @@ class Emprunt {
           ? Timestamp.fromDate(dateRetourEffective!)
           : null,
       'statut': statut.name,
-      'prolongationDemandee': prolongationDemandee,
+      'prolongations': prolongations,
       'notes': notes,
     };
   }

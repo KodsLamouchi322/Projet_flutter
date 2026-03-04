@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/emprunt.dart';
 import '../models/reservation.dart';
-import '../models/livre.dart';
 import '../utils/constants.dart';
 
 /// Controller gérant les emprunts et retours de livres
