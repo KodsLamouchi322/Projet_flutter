@@ -1,80 +1,93 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/auth_controller.dart';
+import '../../controllers/emprunt_controller.dart';
+import '../../models/membre.dart';
 import '../../utils/constants.dart';
-import '../../utils/helpers.dart';
-import '../../utils/validators.dart';
-import '../../widgets/custom_appbar.dart';
-import '../admin/admin_dashboard_view.dart';
 
-/// Écran profil membre / admin
-class ProfilView extends StatelessWidget {
+class ProfilView extends StatefulWidget {
   const ProfilView({super.key});
+
+  @override
+  State<ProfilView> createState() => _ProfilViewState();
+}
+
+class _ProfilViewState extends State<ProfilView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthController>();
+      if (auth.membre != null) {
+        context
+            .read<EmpruntController>()
+            .chargerEmpruntsMemebres(auth.membre!.uid);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
     final membre = auth.membre;
-
-    if (membre == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (membre == null) return const SizedBox();
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
-          // ── Header ──
+          // Header
           SliverAppBar(
             expandedHeight: 200,
             pinned: true,
             backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            title: const Text('Mon Profil'),
-            centerTitle: true,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () => _ouvrirEdition(context, auth),
-                tooltip: 'Modifier le profil',
-              ),
-            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
+                    colors: [AppColors.primary, AppColors.primaryLight],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [AppColors.primaryDark, AppColors.primaryLight],
                   ),
                 ),
                 child: SafeArea(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 20),
                       // Avatar
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: AppColors.accent,
-                        child: Text(
-                          AppHelpers.getInitiales(membre.nom, membre.prenom),
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: AppColors.accent,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
                         ),
+                        child: membre.photoUrl != null
+                            ? ClipOval(
+                                child: Image.network(membre.photoUrl!,
+                                    fit: BoxFit.cover))
+                            : const Icon(Icons.person,
+                                size: 40, color: Colors.white),
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        membre.nomComplet,
+                        '${membre.prenom} ${membre.nom}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      Text(
+                        membre.email,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 4),
@@ -82,15 +95,12 @@ class ProfilView extends StatelessWidget {
                           color: membre.estAdmin
                               ? AppColors.accent
                               : Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          membre.estAdmin ? '👑 Administrateur' : '📚 Membre',
+                          membre.estAdmin ? '⭐ Administrateur' : 'Membre',
                           style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+                              color: Colors.white, fontSize: 12),
                         ),
                       ),
                     ],
@@ -102,149 +112,55 @@ class ProfilView extends StatelessWidget {
 
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(AppSizes.paddingMedium),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
                   // Stats
-                  Row(
-                    children: [
-                      _StatCard(
-                        titre: 'En cours',
-                        valeur: '${membre.nbEmpruntsEnCours}',
-                        icone: Icons.book,
-                        couleur: AppColors.info,
-                      ),
-                      const SizedBox(width: 12),
-                      _StatCard(
-                        titre: 'Total',
-                        valeur: '${membre.nbEmpruntsTotal}',
-                        icone: Icons.history,
-                        couleur: AppColors.success,
-                      ),
-                      const SizedBox(width: 12),
-                      _StatCard(
-                        titre: 'Wishlist',
-                        valeur: '${membre.wishlist.length}',
-                        icone: Icons.favorite,
-                        couleur: Colors.red,
-                      ),
-                    ],
-                  ),
+                  _StatsSection(membre: membre),
                   const SizedBox(height: 20),
-
-                  // Informations du compte
-                  _SectionCard(
-                    titre: 'Informations du compte',
-                    children: [
-                      _InfoTile(
-                        icone: Icons.email_outlined,
-                        label: 'Email',
-                        valeur: membre.email,
-                      ),
-                      _InfoTile(
-                        icone: Icons.phone_outlined,
-                        label: 'Téléphone',
-                        valeur: membre.telephone.isEmpty
-                            ? 'Non renseigné'
-                            : membre.telephone,
-                      ),
-                      _InfoTile(
-                        icone: Icons.calendar_today_outlined,
-                        label: 'Membre depuis',
-                        valeur:
-                            AppHelpers.formatDateLong(membre.dateAdhesion),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Genres préférés
-                  if (membre.genresPreferes.isNotEmpty)
-                    _SectionCard(
-                      titre: 'Genres favoris',
-                      children: [
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: membre.genresPreferes
-                              .map(
-                                (g) => Chip(
-                                  label: Text(g),
-                                  backgroundColor:
-                                      AppColors.accent.withOpacity(0.1),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ],
-                    ),
-
-                  const SizedBox(height: 16),
-
-                  // Admin access
-                  if (membre.estAdmin) ...[
-                    _SectionCard(
-                      titre: 'Administration',
-                      children: [
-                        ListTile(
-                          leading: const Icon(
-                            Icons.admin_panel_settings,
-                            color: AppColors.accent,
-                          ),
-                          title: const Text('Dashboard Admin'),
-                          subtitle: const Text('Gérer catalogue et membres'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const AdminDashboardView(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Actions
-                  _SectionCard(
-                    titre: 'Paramètres',
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.lock_outlined,
-                            color: AppColors.primary),
-                        title: const Text('Changer le mot de passe'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _changerMotDePasse(context),
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.favorite_outline,
-                            color: Colors.red),
-                        title: const Text('Ma liste de souhaits'),
-                        subtitle: Text(
-                            '${membre.wishlist.length} livre(s)'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          // Navigation wishlist (semaine 3-4)
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Déconnexion
+                  // Menu options
+                  _MenuSection(membre: membre),
+                  const SizedBox(height: 20),
+                  // Bouton déconnexion
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: () => _deconnecter(context, auth),
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            title: const Text('Déconnexion'),
+                            content: const Text(
+                                'Voulez-vous vraiment vous déconnecter ?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(context, false),
+                                child: const Text('Annuler'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.error,
+                                ),
+                                child: const Text('Déconnecter'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true && mounted) {
+                          await context.read<AuthController>().deconnecter();
+                        }
+                      },
                       icon: const Icon(Icons.logout, color: AppColors.error),
-                      label: const Text(
-                        'Se déconnecter',
-                        style: TextStyle(color: AppColors.error),
-                      ),
+                      label: const Text('Se déconnecter',
+                          style: TextStyle(color: AppColors.error)),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: AppColors.error),
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ),
@@ -257,367 +173,138 @@ class ProfilView extends StatelessWidget {
       ),
     );
   }
-
-  Future<void> _deconnecter(
-      BuildContext context, AuthController auth) async {
-    final confirm = await AppHelpers.showConfirmDialog(
-      context: context,
-      titre: 'Déconnexion',
-      message: 'Voulez-vous vraiment vous déconnecter ?',
-      confirmLabel: 'Déconnecter',
-      confirmColor: AppColors.error,
-    );
-    if (confirm == true && context.mounted) {
-      await auth.deconnecter();
-    }
-  }
-
-  void _ouvrirEdition(BuildContext context, AuthController auth) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const EditProfilView()),
-    );
-  }
-
-  void _changerMotDePasse(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ChangerMotDePasseView()),
-    );
-  }
 }
 
-// ── Édition du profil ─────────────────────────────────────────────────────────
-class EditProfilView extends StatefulWidget {
-  const EditProfilView({super.key});
-
-  @override
-  State<EditProfilView> createState() => _EditProfilViewState();
-}
-
-class _EditProfilViewState extends State<EditProfilView> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nomCtrl;
-  late final TextEditingController _prenomCtrl;
-  late final TextEditingController _telCtrl;
-  List<String> _genresSelectionnes = [];
-
-  @override
-  void initState() {
-    super.initState();
-    final membre = context.read<AuthController>().membre!;
-    _nomCtrl = TextEditingController(text: membre.nom);
-    _prenomCtrl = TextEditingController(text: membre.prenom);
-    _telCtrl = TextEditingController(text: membre.telephone);
-    _genresSelectionnes = List.from(membre.genresPreferes);
-  }
-
-  @override
-  void dispose() {
-    _nomCtrl.dispose();
-    _prenomCtrl.dispose();
-    _telCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _sauvegarder() async {
-    if (!_formKey.currentState!.validate()) return;
-    final auth = context.read<AuthController>();
-    final ok = await auth.mettreAJourProfil({
-      'nom': _nomCtrl.text.trim(),
-      'prenom': _prenomCtrl.text.trim(),
-      'telephone': _telCtrl.text.trim(),
-      'genresPreferes': _genresSelectionnes,
-    });
-    if (mounted) {
-      if (ok) {
-        AppHelpers.showSuccess(context, 'Profil mis à jour !');
-        Navigator.pop(context);
-      } else {
-        AppHelpers.showError(context, auth.errorMessage ?? 'Erreur');
-      }
-    }
-  }
+class _StatsSection extends StatelessWidget {
+  final Membre membre;
+  const _StatsSection({required this.membre});
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
-    return Scaffold(
-      appBar: const CustomAppBar(titre: 'Modifier le profil'),
-      backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSizes.paddingMedium),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _prenomCtrl,
-                      validator: AppValidators.prenom,
-                      decoration:
-                          const InputDecoration(labelText: 'Prénom'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _nomCtrl,
-                      validator: AppValidators.nom,
-                      decoration: const InputDecoration(labelText: 'Nom'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _telCtrl,
-                keyboardType: TextInputType.phone,
-                validator: AppValidators.telephone,
-                decoration: const InputDecoration(
-                    labelText: 'Téléphone (optionnel)'),
-              ),
-              const SizedBox(height: 24),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Genres favoris',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: AppConstants.genres.map((g) {
-                  final selected = _genresSelectionnes.contains(g);
-                  return FilterChip(
-                    label: Text(g),
-                    selected: selected,
-                    onSelected: (v) {
-                      setState(() {
-                        if (v) {
-                          _genresSelectionnes.add(g);
-                        } else {
-                          _genresSelectionnes.remove(g);
-                        }
-                      });
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 32),
-              auth.isLoading
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton.icon(
-                      onPressed: _sauvegarder,
-                      icon: const Icon(Icons.save),
-                      label: const Text('Sauvegarder'),
-                    ),
-            ],
-          ),
-        ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+          )
+        ],
       ),
-    );
-  }
-}
-
-// ── Changer mot de passe ──────────────────────────────────────────────────────
-class ChangerMotDePasseView extends StatefulWidget {
-  const ChangerMotDePasseView({super.key});
-
-  @override
-  State<ChangerMotDePasseView> createState() => _ChangerMotDePasseViewState();
-}
-
-class _ChangerMotDePasseViewState extends State<ChangerMotDePasseView> {
-  final _formKey = GlobalKey<FormState>();
-  final _ancienCtrl = TextEditingController();
-  final _nouveauCtrl = TextEditingController();
-  final _confirmCtrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ancienCtrl.dispose();
-    _nouveauCtrl.dispose();
-    _confirmCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(titre: 'Changer le mot de passe'),
-      backgroundColor: AppColors.background,
-      body: Padding(
-        padding: const EdgeInsets.all(AppSizes.paddingMedium),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              TextFormField(
-                controller: _ancienCtrl,
-                obscureText: true,
-                validator: AppValidators.motDePasse,
-                decoration: const InputDecoration(
-                  labelText: 'Ancien mot de passe',
-                  prefixIcon: Icon(Icons.lock_outlined),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nouveauCtrl,
-                obscureText: true,
-                validator: AppValidators.motDePasse,
-                decoration: const InputDecoration(
-                  labelText: 'Nouveau mot de passe',
-                  prefixIcon: Icon(Icons.lock),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _confirmCtrl,
-                obscureText: true,
-                validator: (v) => AppValidators.confirmerMotDePasse(
-                    v, _nouveauCtrl.text),
-                decoration: const InputDecoration(
-                  labelText: 'Confirmer le nouveau mot de passe',
-                  prefixIcon: Icon(Icons.lock),
-                ),
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton.icon(
-                onPressed: () async {
-                  if (!_formKey.currentState!.validate()) return;
-                  // changerMotDePasse via AuthService (semaines futures)
-                  AppHelpers.showSuccess(
-                      context, 'Mot de passe changé avec succès !');
-                  Navigator.pop(context);
-                },
-                icon: const Icon(Icons.check),
-                label: const Text('Confirmer'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Widgets helper ────────────────────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final String titre;
-  final String valeur;
-  final IconData icone;
-  final Color couleur;
-
-  const _StatCard({
-    required this.titre,
-    required this.valeur,
-    required this.icone,
-    required this.couleur,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppSizes.borderRadius),
-          boxShadow: const [
-            BoxShadow(
-                color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-          ],
-        ),
-        child: Column(
-          children: [
-            Icon(icone, color: couleur, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              valeur,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: couleur,
-              ),
-            ),
-            Text(
-              titre,
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  final String titre;
-  final List<Widget> children;
-
-  const _SectionCard({required this.titre, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(
-            titre,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
-        Card(
-          child: Column(children: children),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  final IconData icone;
-  final String label;
-  final String valeur;
-
-  const _InfoTile(
-      {required this.icone, required this.label, required this.valeur});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-          horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Icon(icone, size: 20, color: AppColors.primary),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary)),
-              Text(valeur,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w500)),
-            ],
-          ),
+          _StatItem(
+              value: '${membre.nbEmpruntsEnCours}',
+              label: 'En cours',
+              color: AppColors.primary),
+          _divider(),
+          _StatItem(
+              value: '${membre.nbEmpruntsTotal}',
+              label: 'Total lus',
+              color: AppColors.accent),
+          _divider(),
+          _StatItem(
+              value: membre.statut.label,
+              label: 'Statut',
+              color: AppColors.success),
         ],
       ),
     );
   }
+
+  Widget _divider() => Container(
+      height: 40, width: 1, color: AppColors.divider,
+      margin: const EdgeInsets.symmetric(horizontal: 12));
+}
+
+class _StatItem extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color color;
+  const _StatItem(
+      {required this.value, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Column(children: [
+          Text(value,
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          const SizedBox(height: 2),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
+        ]),
+      );
+}
+
+class _MenuSection extends StatelessWidget {
+  final Membre membre;
+  const _MenuSection({required this.membre});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      _MenuItem(Icons.book_outlined, 'Mes emprunts', AppColors.primary, () {}),
+      _MenuItem(Icons.bookmark_border, 'Ma wishlist', AppColors.accent, () {}),
+      _MenuItem(Icons.history, 'Historique', AppColors.primaryLight, () {}),
+      _MenuItem(Icons.edit_outlined, 'Modifier le profil', AppColors.accentDark, () {}),
+      _MenuItem(Icons.star_border, 'Genres préférés', AppColors.accentLight, () {}),
+      _MenuItem(Icons.settings_outlined, 'Paramètres', AppColors.textSecondary, () {}),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+        ],
+      ),
+      child: Column(
+        children: items
+            .asMap()
+            .entries
+            .map((e) => Column(
+                  children: [
+                    ListTile(
+                      leading: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: e.value.color.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(e.value.icon,
+                            color: e.value.color, size: 20),
+                      ),
+                      title: Text(e.value.label,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w500)),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppColors.textSecondary, size: 20),
+                      onTap: e.value.onTap,
+                    ),
+                    if (e.key < items.length - 1)
+                      const Divider(
+                          height: 0,
+                          indent: 16,
+                          endIndent: 16,
+                          color: AppColors.divider),
+                  ],
+                ))
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _MenuItem {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _MenuItem(this.icon, this.label, this.color, this.onTap);
 }
