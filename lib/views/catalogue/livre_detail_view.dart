@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/auth_controller.dart';
+import '../../controllers/emprunt_controller.dart';
 import '../../controllers/livre_controller.dart';
 import '../../models/livre.dart';
 import '../../services/firestore_service.dart';
@@ -276,7 +277,7 @@ class LivreDetailView extends StatelessWidget {
   Future<void> _toggleWishlist(
       BuildContext context, AuthController auth) async {
     await FirestoreService()
-        .toggleWishlist(auth.membre!.uid, livre.id);
+        .toggleWishlist(membreId: auth.membre!.uid, livreId: livre.id);
     // Recharger le membre
     await auth.mettreAJourProfil({});
     if (context.mounted) {
@@ -297,6 +298,9 @@ class _ActionsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.read<AuthController>();
+    final empruntCtrl = context.read<EmpruntController>();
+
     return Container(
       padding: const EdgeInsets.all(AppSizes.paddingMedium),
       decoration: const BoxDecoration(
@@ -308,10 +312,38 @@ class _ActionsBar extends StatelessWidget {
       child: SafeArea(
         child: livre.estDisponible
             ? ElevatedButton.icon(
-                onPressed: () {
-                  // Logique emprunt (semaine 3-4)
-                  AppHelpers.showInfo(
-                      context, 'Fonctionnalité disponible semaine 3-4');
+                onPressed: () async {
+                  if (auth.membre == null) return;
+                  final confirme = await AppHelpers.showConfirmDialog(
+                    context: context,
+                    titre: 'Emprunter ce livre',
+                    message:
+                        'Confirmez-vous l\'emprunt de \"${livre.titre}\" ?',
+                    confirmLabel: 'Emprunter',
+                    confirmColor: AppColors.success,
+                  );
+                  if (confirme != true) return;
+
+                  final ok = await empruntCtrl.emprunterLivre(
+                    livreId: livre.id,
+                    membreId: auth.membre!.uid,
+                    membreNom: auth.membre!.nomComplet,
+                    livreTitre: livre.titre,
+                  );
+                  if (context.mounted) {
+                    if (ok) {
+                      AppHelpers.showSuccess(
+                        context,
+                        'Emprunt enregistré. Bonne lecture !',
+                      );
+                    } else {
+                      AppHelpers.showError(
+                        context,
+                        empruntCtrl.errorMessage ??
+                            AppConstants.erreurInconnu,
+                      );
+                    }
+                  }
                 },
                 icon: const Icon(Icons.library_add),
                 label: const Text('Emprunter ce livre'),
@@ -323,9 +355,37 @@ class _ActionsBar extends StatelessWidget {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        AppHelpers.showInfo(
-                            context, 'Réservation disponible semaine 3-4');
+                      onPressed: () async {
+                        if (auth.membre == null) return;
+                        final confirme = await AppHelpers.showConfirmDialog(
+                          context: context,
+                          titre: 'Réserver ce livre',
+                          message:
+                              'Ce livre est actuellement emprunté.\nSouhaitez-vous le réserver ?',
+                          confirmLabel: 'Réserver',
+                        );
+                        if (confirme != true) return;
+
+                        final ok = await empruntCtrl.reserverLivre(
+                          livreId: livre.id,
+                          membreId: auth.membre!.uid,
+                          membreNom: auth.membre!.nomComplet,
+                          livreTitre: livre.titre,
+                        );
+                        if (context.mounted) {
+                          if (ok) {
+                            AppHelpers.showSuccess(
+                              context,
+                              'Réservation enregistrée. Vous serez dans la file d\'attente.',
+                            );
+                          } else {
+                            AppHelpers.showError(
+                              context,
+                              empruntCtrl.errorMessage ??
+                                  AppConstants.erreurInconnu,
+                            );
+                          }
+                        }
                       },
                       icon: const Icon(Icons.bookmark_add),
                       label: const Text('Réserver'),

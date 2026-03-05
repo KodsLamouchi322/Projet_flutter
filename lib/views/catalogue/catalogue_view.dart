@@ -74,6 +74,14 @@ class _CatalogueViewState extends State<CatalogueView> {
             onSelect: livreCtrl.filtrerParGenre,
           ),
 
+          // ── Filtres avancés (disponibilité, tri) ──
+          _FiltresAvances(
+            seulementDisponibles: livreCtrl.filtreDisponiblesSeulement,
+            tri: livreCtrl.tri,
+            onToggleDisponibles: livreCtrl.basculerDisponiblesSeulement,
+            onChangeTri: livreCtrl.changerTri,
+          ),
+
           // ── Résultats ──
           Expanded(
             child: livreCtrl.isLoading
@@ -192,6 +200,80 @@ class _FiltresGenres extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ── Filtres avancés (disponibilité, tri) ─────────────────────────────────────
+
+class _FiltresAvances extends StatelessWidget {
+  final bool seulementDisponibles;
+  final LivreTri tri;
+  final VoidCallback onToggleDisponibles;
+  final ValueChanged<LivreTri> onChangeTri;
+
+  const _FiltresAvances({
+    required this.seulementDisponibles,
+    required this.tri,
+    required this.onToggleDisponibles,
+    required this.onChangeTri,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 4,
+      ),
+      child: Row(
+        children: [
+          // Disponibilité
+          FilterChip(
+            label: const Text(
+              'Disponibles seulement',
+              style: TextStyle(fontSize: 12),
+            ),
+            selected: seulementDisponibles,
+            onSelected: (_) => onToggleDisponibles(),
+            backgroundColor: Colors.white,
+            selectedColor: AppColors.success.withOpacity(0.15),
+            checkmarkColor: AppColors.success,
+            labelStyle: TextStyle(
+              color: seulementDisponibles
+                  ? AppColors.success
+                  : AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Spacer(),
+          // Tri par popularité
+          ChoiceChip(
+            label: const Text('Populaires', style: TextStyle(fontSize: 12)),
+            selected: tri == LivreTri.popularite,
+            onSelected: (_) => onChangeTri(LivreTri.popularite),
+            selectedColor: AppColors.accent.withOpacity(0.2),
+            labelStyle: TextStyle(
+              color: tri == LivreTri.popularite
+                  ? AppColors.accentDark
+                  : AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Tri par nouveauté
+          ChoiceChip(
+            label: const Text('Nouveautés', style: TextStyle(fontSize: 12)),
+            selected: tri == LivreTri.nouveaute,
+            onSelected: (_) => onChangeTri(LivreTri.nouveaute),
+            selectedColor: AppColors.primaryLight.withOpacity(0.15),
+            labelStyle: TextStyle(
+              color: tri == LivreTri.nouveaute
+                  ? AppColors.primaryDark
+                  : AppColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }
