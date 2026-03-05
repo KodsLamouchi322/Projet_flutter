@@ -18,7 +18,10 @@ class _HomeViewState extends State<HomeView> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<LivreController>().chargerLivres();
+      final auth = context.read<AuthController>();
+      context.read<LivreController>().initStream(
+            membreConnecte: auth.isAuthenticated,
+          );
     });
   }
 
