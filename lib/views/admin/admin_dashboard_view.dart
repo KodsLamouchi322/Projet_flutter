@@ -5,6 +5,7 @@ import '../../services/firestore_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/custom_appbar.dart';
 import 'ajouter_livre_view.dart';
+import 'admin_evenements_view.dart';
 
 /// Tableau de bord administrateur
 class AdminDashboardView extends StatefulWidget {
@@ -193,7 +194,12 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
                 icone: Icons.event,
                 couleur: AppColors.accent,
                 onTap: () {
-                  _showComingSoon(context, 'Gestion des événements');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminEvenementsView(),
+                    ),
+                  );
                 },
               ),
 

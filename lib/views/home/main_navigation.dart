@@ -4,6 +4,7 @@ import '../../controllers/auth_controller.dart';
 import '../../utils/constants.dart';
 import '../home/home_view.dart';
 import '../catalogue/catalogue_view.dart';
+import '../emprunts/emprunts_view.dart';
 import '../evenements/evenements_view.dart';
 import '../messagerie/messagerie_view.dart';
 import '../profil/profil_view.dart';
@@ -22,6 +23,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final List<Widget> _pagesUser = const [
     HomeView(),
     CatalogueView(),
+    EmpruntsView(),
     EvenementsView(),
     MessagerieView(),
     ProfilView(),
@@ -83,6 +85,10 @@ class _MainNavigationState extends State<MainNavigation> {
               icon: Icon(Icons.menu_book_outlined),
               activeIcon: Icon(Icons.menu_book),
               label: 'Catalogue'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.bookmark_outline),
+              activeIcon: Icon(Icons.bookmark),
+              label: 'Emprunts'),
           BottomNavigationBarItem(
               icon: Icon(Icons.event_outlined),
               activeIcon: Icon(Icons.event),

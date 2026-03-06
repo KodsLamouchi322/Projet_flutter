@@ -64,9 +64,9 @@ class _ProfilViewState extends State<ProfilView> {
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 3),
                         ),
-                        child: membre.photoUrl != null
+                        child: membre.photoUrl.isNotEmpty
                             ? ClipOval(
-                                child: Image.network(membre.photoUrl!,
+                                child: Image.network(membre.photoUrl,
                                     fit: BoxFit.cover))
                             : const Icon(Icons.person,
                                 size: 40, color: Colors.white),
@@ -206,7 +206,7 @@ class _StatsSection extends StatelessWidget {
               color: AppColors.accent),
           _divider(),
           _StatItem(
-              value: membre.statut.label,
+              value: membre.statut.name,
               label: 'Statut',
               color: AppColors.success),
         ],
