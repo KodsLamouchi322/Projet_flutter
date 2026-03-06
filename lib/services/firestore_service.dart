@@ -21,15 +21,32 @@ class FirestoreService {
     String? recherche,
   }) {
     Query query = _db.collection(AppConstants.colLivres);
-
     if (genre != null && genre.isNotEmpty) {
       query = query.where('genre', isEqualTo: genre);
     }
     if (disponible != null) {
       query = query.where('estDisponible', isEqualTo: disponible);
     }
-
     return query
+        .orderBy('titre')
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => Livre.fromFirestore(d)).toList());
+  }
+
+  /// Alias utilisé par LivreController - tous les livres
+  Stream<List<Livre>> livresStream() {
+    return _db
+        .collection(AppConstants.colLivres)
+        .orderBy('titre')
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => Livre.fromFirestore(d)).toList());
+  }
+
+  /// Alias utilisé par LivreController - livres disponibles uniquement
+  Stream<List<Livre>> livresDisponiblesStream() {
+    return _db
+        .collection(AppConstants.colLivres)
+        .where('statut', isEqualTo: 'disponible')
         .orderBy('titre')
         .snapshots()
         .map((snap) => snap.docs.map((d) => Livre.fromFirestore(d)).toList());
@@ -71,7 +88,7 @@ class FirestoreService {
         .where((l) =>
             l.titre.toLowerCase().contains(queryLower) ||
             l.auteur.toLowerCase().contains(queryLower) ||
-            (l.isbn?.contains(query) ?? false) ||
+            l.isbn.contains(query) ||
             l.genre.toLowerCase().contains(queryLower))
         .toList();
   }
@@ -299,6 +316,19 @@ class FirestoreService {
       'empruntsActifs': stats['actifs'] ?? 0,
       'empruntsEnRetard': stats['enRetard'] ?? 0,
       'reservationsEnAttente': stats['reservations'] ?? 0,
+    };
+  }
+
+  /// Alias attendu par AdminDashboardView
+  Future<Map<String, int>> getStatsGenerales() async {
+    final livres = await _db.collection(AppConstants.colLivres).count().get();
+    final membres = await _db.collection(AppConstants.colMembres).count().get();
+    final stats = await getStatsEmprunts();
+    return {
+      'totalLivres': livres.count ?? 0,
+      'livresDisponibles': 0,
+      'totalMembres': membres.count ?? 0,
+      'empruntsEnCours': stats['actifs'] ?? 0,
     };
   }
 }

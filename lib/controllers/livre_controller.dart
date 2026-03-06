@@ -4,6 +4,8 @@ import '../services/firestore_service.dart';
 
 enum LivreStatus { initial, loading, loaded, error }
 
+enum LivreTri { titre, popularite, nouveaute }
+
 /// Controller catalogue livres (Provider / MVC)
 class LivreController extends ChangeNotifier {
   final FirestoreService _service = FirestoreService();
@@ -12,9 +14,11 @@ class LivreController extends ChangeNotifier {
   List<Livre> _livres = [];
   List<Livre> _resultatsRecherche = [];
   String _genreSelectionne = '';
-  String _rechercheQuery = '';
+  final String _rechercheQuery = '';
   String? _errorMessage;
   bool _rechercheActive = false;
+  bool _filtreDisponiblesSeulement = false;
+  LivreTri _tri = LivreTri.titre;
 
   // ─── Getters ──────────────────────────────────────────────────────────────
   LivreStatus get status => _status;
@@ -22,13 +26,38 @@ class LivreController extends ChangeNotifier {
   bool get isLoading => _status == LivreStatus.loading;
   String get genreSelectionne => _genreSelectionne;
   bool get rechercheActive => _rechercheActive;
+  bool get filtreDisponiblesSeulement => _filtreDisponiblesSeulement;
+  LivreTri get tri => _tri;
 
   List<Livre> get livres {
-    if (_rechercheActive) return _resultatsRecherche;
-    if (_genreSelectionne.isNotEmpty) {
-      return _livres.where((l) => l.genre == _genreSelectionne).toList();
+    List<Livre> result;
+
+    if (_rechercheActive) {
+      result = List.from(_resultatsRecherche);
+    } else {
+      result = List.from(_livres);
+      if (_genreSelectionne.isNotEmpty) {
+        result = result.where((l) => l.genre == _genreSelectionne).toList();
+      }
     }
-    return _livres;
+
+    if (_filtreDisponiblesSeulement) {
+      result = result.where((l) => l.estDisponible).toList();
+    }
+
+    switch (_tri) {
+      case LivreTri.popularite:
+        result.sort((a, b) => b.nbEmpruntsTotal.compareTo(a.nbEmpruntsTotal));
+        break;
+      case LivreTri.nouveaute:
+        result.sort((a, b) => b.dateAjout.compareTo(a.dateAjout));
+        break;
+      case LivreTri.titre:
+        result.sort((a, b) => a.titre.compareTo(b.titre));
+        break;
+    }
+
+    return result;
   }
 
   List<Livre> get livresDisponibles =>
@@ -71,7 +100,6 @@ class LivreController extends ChangeNotifier {
 
   // ─── Recherche ────────────────────────────────────────────────────────────
   Future<void> rechercher(String query) async {
-    _rechercheQuery = query;
     if (query.trim().isEmpty) {
       _rechercheActive = false;
       _resultatsRecherche = [];
@@ -96,7 +124,6 @@ class LivreController extends ChangeNotifier {
 
   void annulerRecherche() {
     _rechercheActive = false;
-    _rechercheQuery = '';
     _resultatsRecherche = [];
     notifyListeners();
   }
@@ -109,6 +136,20 @@ class LivreController extends ChangeNotifier {
 
   void reinitialiserFiltres() {
     _genreSelectionne = '';
+    _filtreDisponiblesSeulement = false;
+    _tri = LivreTri.titre;
+    notifyListeners();
+  }
+
+  // ─── Filtre disponibilité ─────────────────────────────────────────────────
+  void basculerDisponiblesSeulement() {
+    _filtreDisponiblesSeulement = !_filtreDisponiblesSeulement;
+    notifyListeners();
+  }
+
+  // ─── Tri ──────────────────────────────────────────────────────────────────
+  void changerTri(LivreTri nouveauTri) {
+    _tri = nouveauTri;
     notifyListeners();
   }
 

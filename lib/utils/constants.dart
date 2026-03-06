@@ -130,6 +130,9 @@ class AppConstants {
     'Autre',
   ];
 
+  static const int maxProlongations = 2;
+  static const int dureeProlongationJours = 7;
+
   // Messages d'erreur communs
   static const String erreurReseau =
       'Erreur de connexion. Vérifiez votre internet.';

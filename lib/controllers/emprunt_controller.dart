@@ -1,74 +1,73 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import '../models/emprunt.dart';
 import '../models/reservation.dart';
 import '../utils/constants.dart';
+import '../utils/helpers.dart';
+
+enum EmpruntStatus { initial, loading, loaded, error }
 
 /// Controller gérant les emprunts et retours de livres
 class EmpruntController extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  EmpruntStatus _status = EmpruntStatus.initial;
   List<Emprunt> _empruntsActifs = [];
   List<Emprunt> _historique = [];
   List<Reservation> _reservations = [];
-  bool _isLoading = false;
   String? _errorMessage;
 
   // ─── Getters ──────────────────────────────────────────────────────────────
+  EmpruntStatus get status => _status;
+  bool get isLoading => _status == EmpruntStatus.loading;
+  String? get errorMessage => _errorMessage;
   List<Emprunt> get empruntsActifs => _empruntsActifs;
   List<Emprunt> get historique => _historique;
   List<Reservation> get reservations => _reservations;
-  bool get isLoading => _isLoading;
-  String? get errorMessage => _errorMessage;
 
-  int get nbEmpruntsEnCours => _empruntsActifs.length;
-  int get nbReservationsEnAttente =>
-      _reservations.where((r) => r.statut == StatutReservation.enAttente).length;
-
-  // ─── Charger les emprunts d'un membre ─────────────────────────────────────
+  // ─── Charger emprunts du membre ───────────────────────────────────────────
   Future<void> chargerEmpruntsMemebres(String membreId) async {
-    _isLoading = true;
+    _status = EmpruntStatus.loading;
     notifyListeners();
     try {
       // Emprunts actifs
-      final snapshotActifs = await _db
+      final actifSnap = await _db
           .collection(AppConstants.colEmprunts)
           .where('membreId', isEqualTo: membreId)
-          .where('statut', whereIn: ['enCours', 'enRetard'])
-          .orderBy('dateEmprunt', descending: true)
+          .where('statut', whereIn: ['enCours', 'enRetard', 'prolonge'])
+          .orderBy('dateRetourPrevue')
           .get();
       _empruntsActifs =
-          snapshotActifs.docs.map((d) => Emprunt.fromFirestore(d)).toList();
+          actifSnap.docs.map((d) => Emprunt.fromFirestore(d)).toList();
 
-      // Historique (retournés)
-      final snapshotHisto = await _db
+      // Historique
+      final histSnap = await _db
           .collection(AppConstants.colEmprunts)
           .where('membreId', isEqualTo: membreId)
           .where('statut', isEqualTo: 'retourne')
-          .orderBy('dateEmprunt', descending: true)
-          .limit(20)
+          .orderBy('dateRetourEffective', descending: true)
           .get();
       _historique =
-          snapshotHisto.docs.map((d) => Emprunt.fromFirestore(d)).toList();
+          histSnap.docs.map((d) => Emprunt.fromFirestore(d)).toList();
 
-      _errorMessage = null;
+      _status = EmpruntStatus.loaded;
     } catch (e) {
+      _status = EmpruntStatus.error;
       _errorMessage = e.toString();
     }
-    _isLoading = false;
     notifyListeners();
   }
 
-  // ─── Charger les réservations d'un membre ─────────────────────────────────
+  // ─── Charger réservations du membre ──────────────────────────────────────
   Future<void> chargerReservationsMembre(String membreId) async {
     try {
-      final snapshot = await _db
+      final snap = await _db
           .collection(AppConstants.colReservations)
           .where('membreId', isEqualTo: membreId)
           .orderBy('dateReservation', descending: true)
           .get();
       _reservations =
-          snapshot.docs.map((d) => Reservation.fromFirestore(d)).toList();
+          snap.docs.map((d) => Reservation.fromFirestore(d)).toList();
       notifyListeners();
     } catch (e) {
       _errorMessage = e.toString();
@@ -76,77 +75,93 @@ class EmpruntController extends ChangeNotifier {
     }
   }
 
-  // ─── Emprunter un livre ────────────────────────────────────────────────────
+  // ─── Emprunter un livre ───────────────────────────────────────────────────
   Future<bool> emprunterLivre({
     required String livreId,
     required String membreId,
     required String membreNom,
     required String livreTitre,
+    String livreAuteur = '',
+    String livreCouverture = '',
   }) async {
-    _isLoading = true;
-    notifyListeners();
     try {
       final dateEmprunt = DateTime.now();
-      final dateRetourPrevue = dateEmprunt
-          .add(const Duration(days: AppConstants.dureeEmpruntJours));
+      final dateRetour = AppHelpers.calculerDateRetour();
+
+      // Vérifier disponibilité
+      final livreDoc =
+          await _db.collection(AppConstants.colLivres).doc(livreId).get();
+      final statut = (livreDoc.data() as Map<String, dynamic>)['statut'] ?? '';
+      if (statut != 'disponible') {
+        _errorMessage = 'Ce livre n\'est plus disponible.';
+        notifyListeners();
+        return false;
+      }
 
       // Créer l'emprunt
       await _db.collection(AppConstants.colEmprunts).add({
-        'livreId': livreId,
         'membreId': membreId,
         'membreNom': membreNom,
+        'livreId': livreId,
         'livreTitre': livreTitre,
+        'livreAuteur': livreAuteur,
+        'livreCouverture': livreCouverture,
         'dateEmprunt': Timestamp.fromDate(dateEmprunt),
-        'dateRetourPrevue': Timestamp.fromDate(dateRetourPrevue),
+        'dateRetourPrevue': Timestamp.fromDate(dateRetour),
         'dateRetourEffective': null,
         'statut': 'enCours',
         'prolongations': 0,
+        'notes': null,
       });
 
-      // Mettre le livre comme indisponible
+      // Marquer le livre comme emprunté
       await _db.collection(AppConstants.colLivres).doc(livreId).update({
-        'estDisponible': false,
-        'emprunteurId': membreId,
+        'statut': 'emprunte',
+        'nbEmpruntsTotal': FieldValue.increment(1),
+      });
+
+      // Incrémenter le compteur du membre
+      await _db.collection(AppConstants.colMembres).doc(membreId).update({
+        'nbEmpruntsEnCours': FieldValue.increment(1),
+        'nbEmpruntsTotal': FieldValue.increment(1),
       });
 
       await chargerEmpruntsMemebres(membreId);
-      _isLoading = false;
-      notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = e.toString();
-      _isLoading = false;
       notifyListeners();
       return false;
     }
   }
 
-  // ─── Retourner un livre ────────────────────────────────────────────────────
+  // ─── Retourner un livre ───────────────────────────────────────────────────
   Future<bool> retournerLivre({
     required String empruntId,
     required String livreId,
     required String membreId,
   }) async {
-    _isLoading = true;
-    notifyListeners();
     try {
+      // Mettre à jour l'emprunt
       await _db.collection(AppConstants.colEmprunts).doc(empruntId).update({
-        'dateRetourEffective': Timestamp.fromDate(DateTime.now()),
         'statut': 'retourne',
+        'dateRetourEffective': Timestamp.fromDate(DateTime.now()),
       });
 
+      // Rendre le livre disponible
       await _db.collection(AppConstants.colLivres).doc(livreId).update({
-        'estDisponible': true,
-        'emprunteurId': null,
+        'statut': 'disponible',
+      });
+
+      // Décrémenter le compteur
+      await _db.collection(AppConstants.colMembres).doc(membreId).update({
+        'nbEmpruntsEnCours': FieldValue.increment(-1),
       });
 
       await chargerEmpruntsMemebres(membreId);
-      _isLoading = false;
-      notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = e.toString();
-      _isLoading = false;
       notifyListeners();
       return false;
     }
@@ -158,19 +173,29 @@ class EmpruntController extends ChangeNotifier {
     required String membreId,
   }) async {
     try {
-      final emprunt = _empruntsActifs.firstWhere((e) => e.id == empruntId);
-      if (emprunt.prolongations >= 2) {
-        _errorMessage = 'Maximum 2 prolongations autorisées.';
+      final doc = await _db
+          .collection(AppConstants.colEmprunts)
+          .doc(empruntId)
+          .get();
+      final data = doc.data() as Map<String, dynamic>;
+      final prolongations = (data['prolongations'] ?? 0) as int;
+
+      if (prolongations >= AppConstants.maxProlongations) {
+        _errorMessage =
+            'Nombre maximum de prolongations atteint (${AppConstants.maxProlongations}).';
         notifyListeners();
         return false;
       }
 
-      final nouvelleDateRetour = emprunt.dateRetourPrevue
-          .add(const Duration(days: 7));
+      final dateActuelle =
+          (data['dateRetourPrevue'] as Timestamp).toDate();
+      final nouvelleDate = dateActuelle
+          .add(const Duration(days: AppConstants.dureeProlongationJours));
 
       await _db.collection(AppConstants.colEmprunts).doc(empruntId).update({
-        'dateRetourPrevue': Timestamp.fromDate(nouvelleDateRetour),
-        'prolongations': emprunt.prolongations + 1,
+        'dateRetourPrevue': Timestamp.fromDate(nouvelleDate),
+        'prolongations': FieldValue.increment(1),
+        'statut': 'prolonge',
       });
 
       await chargerEmpruntsMemebres(membreId);
@@ -188,54 +213,38 @@ class EmpruntController extends ChangeNotifier {
     required String membreId,
     required String membreNom,
     required String livreTitre,
+    String livreAuteur = '',
   }) async {
-    _isLoading = true;
-    notifyListeners();
     try {
-      // Vérifier si déjà réservé par ce membre
-      final existing = await _db
-          .collection(AppConstants.colReservations)
-          .where('livreId', isEqualTo: livreId)
-          .where('membreId', isEqualTo: membreId)
-          .where('statut', isEqualTo: 'enAttente')
-          .get();
-
-      if (existing.docs.isNotEmpty) {
-        _errorMessage = 'Vous avez déjà réservé ce livre.';
-        _isLoading = false;
-        notifyListeners();
-        return false;
-      }
-
-      // Compter la position dans la file
-      final fileAttente = await _db
+      // Compter les réservations existantes pour ce livre
+      final existingSnap = await _db
           .collection(AppConstants.colReservations)
           .where('livreId', isEqualTo: livreId)
           .where('statut', isEqualTo: 'enAttente')
           .get();
+
+      final position = existingSnap.docs.length + 1;
+      final dateReservation = DateTime.now();
+      final dateExpiration =
+          dateReservation.add(const Duration(days: 30));
 
       await _db.collection(AppConstants.colReservations).add({
-        'livreId': livreId,
         'membreId': membreId,
         'membreNom': membreNom,
+        'livreId': livreId,
         'livreTitre': livreTitre,
-        'dateReservation': Timestamp.fromDate(DateTime.now()),
-        'dateExpiration': Timestamp.fromDate(
-          DateTime.now().add(
-            const Duration(days: AppConstants.dureeReservationJours),
-          ),
-        ),
+        'livreAuteur': livreAuteur,
+        'livreCouverture': '',
+        'dateReservation': Timestamp.fromDate(dateReservation),
+        'dateExpiration': Timestamp.fromDate(dateExpiration),
         'statut': 'enAttente',
-        'positionFile': fileAttente.docs.length + 1,
+        'positionFile': position,
       });
 
       await chargerReservationsMembre(membreId);
-      _isLoading = false;
-      notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = e.toString();
-      _isLoading = false;
       notifyListeners();
       return false;
     }
@@ -260,32 +269,14 @@ class EmpruntController extends ChangeNotifier {
     }
   }
 
-  // ─── Admin: tous les emprunts ─────────────────────────────────────────────
+  // ─── Admin : tous les emprunts actifs ────────────────────────────────────
   Future<List<Emprunt>> getTousEmpruntsActifs() async {
-    final snapshot = await _db
+    final snap = await _db
         .collection(AppConstants.colEmprunts)
         .where('statut', whereIn: ['enCours', 'enRetard'])
         .orderBy('dateRetourPrevue')
         .get();
-    return snapshot.docs.map((d) => Emprunt.fromFirestore(d)).toList();
-  }
-
-  // ─── Signaler un livre endommagé ──────────────────────────────────────────
-  Future<bool> signalerLivreEndommage({
-    required String livreId,
-    required String description,
-  }) async {
-    try {
-      await _db.collection(AppConstants.colLivres).doc(livreId).update({
-        'signalementDommage': description,
-        'dateSignalement': Timestamp.fromDate(DateTime.now()),
-      });
-      return true;
-    } catch (e) {
-      _errorMessage = e.toString();
-      notifyListeners();
-      return false;
-    }
+    return snap.docs.map((d) => Emprunt.fromFirestore(d)).toList();
   }
 
   void clearError() {

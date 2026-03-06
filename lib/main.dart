@@ -2,16 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'controllers/auth_controller.dart';
-import 'firebase_options.dart'; // ← AJOUTE cette ligne
 import 'controllers/livre_controller.dart';
+import 'controllers/emprunt_controller.dart';
+import 'controllers/evenement_controller.dart';
+import 'controllers/message_controller.dart';
+import 'firebase_options.dart';
 import 'utils/constants.dart';
 import 'views/auth/login_view.dart';
 import 'views/home/main_navigation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-    await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform, // ← AJOUTE cette ligne
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
   );
   runApp(const BibliothequeApp());
 }
@@ -25,6 +28,9 @@ class BibliothequeApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthController()),
         ChangeNotifierProvider(create: (_) => LivreController()),
+        ChangeNotifierProvider(create: (_) => EmpruntController()),
+        ChangeNotifierProvider(create: (_) => EvenementController()),
+        ChangeNotifierProvider(create: (_) => MessageController()),
       ],
       child: MaterialApp(
         title: 'Bibliothèque de Quartier',
@@ -38,7 +44,6 @@ class BibliothequeApp extends StatelessWidget {
   }
 }
 
-/// Widget racine qui gère la navigation selon l'état d'auth
 class _AppRoot extends StatelessWidget {
   const _AppRoot();
 
@@ -61,7 +66,6 @@ class _AppRoot extends StatelessWidget {
   }
 }
 
-/// Écran de démarrage
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
