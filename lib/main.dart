@@ -61,7 +61,7 @@ class _AppRoot extends StatelessWidget {
 
       case AuthStatus.unauthenticated:
       case AuthStatus.error:
-        return const LoginView();
+        return const MainNavigation();
     }
   }
 }

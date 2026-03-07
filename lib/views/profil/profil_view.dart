@@ -4,6 +4,7 @@ import '../../controllers/auth_controller.dart';
 import '../../controllers/emprunt_controller.dart';
 import '../../models/membre.dart';
 import '../../utils/constants.dart';
+import '../auth/login_view.dart';
 
 class ProfilView extends StatefulWidget {
   const ProfilView({super.key});
@@ -30,8 +31,27 @@ class _ProfilViewState extends State<ProfilView> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
     final membre = auth.membre;
-    if (membre == null) return const SizedBox();
-
+    if (membre == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Profil'), backgroundColor: AppColors.primary, foregroundColor: Colors.white, centerTitle: true),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.account_circle, size: 60, color: AppColors.primary),
+              const SizedBox(height: 16),
+              const Text('Vous n\'êtes pas connecté', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginView())),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+                child: const Text('Se connecter ou Créer un compte'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(

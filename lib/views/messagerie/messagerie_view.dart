@@ -4,6 +4,7 @@ import '../../controllers/message_controller.dart';
 import '../../controllers/auth_controller.dart';
 import '../../models/message.dart';
 import '../../utils/constants.dart';
+import '../auth/login_view.dart';
 import 'conversation_view.dart';
 
 class MessagerieView extends StatefulWidget {
@@ -37,6 +38,30 @@ class _MessagerieViewState extends State<MessagerieView>
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthController>();
+    if (auth.membre == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(title: const Text('Messagerie'), backgroundColor: AppColors.primary, foregroundColor: Colors.white, elevation: 0),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.chat_bubble_outline, size: 60, color: AppColors.primary),
+              const SizedBox(height: 16),
+              const Text('Vous n\'êtes pas connecté', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginView())),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+                child: const Text('Se connecter pour discuter'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(

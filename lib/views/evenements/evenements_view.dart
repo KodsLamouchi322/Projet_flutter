@@ -4,6 +4,7 @@ import '../../controllers/evenement_controller.dart';
 import '../../controllers/auth_controller.dart';
 import '../../models/evenement.dart';
 import '../../utils/constants.dart';
+import '../auth/login_view.dart';
 import 'evenement_detail_view.dart';
 
 class EvenementsView extends StatefulWidget {
@@ -108,10 +109,28 @@ class _MesEvenementsTabState extends State<_MesEvenementsTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (context.watch<AuthController>().membre == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock_outline, size: 60, color: AppColors.divider),
+            const SizedBox(height: 16),
+            const Text('Vous n\'êtes pas connecté', style: TextStyle(fontSize: 18, color: AppColors.textPrimary)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginView())),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+              child: const Text('Se connecter'),
+            ),
+          ],
+        ),
+      );
+    }
     return Consumer<EvenementController>(
       builder: (_, ctrl, __) {
         if (ctrl.mesEvenements.isEmpty) {
-          return _Empty(message: 'Aucune inscription');
+          return const _Empty(message: 'Aucune inscription');
         }
         return ListView.builder(
           padding: const EdgeInsets.all(16),

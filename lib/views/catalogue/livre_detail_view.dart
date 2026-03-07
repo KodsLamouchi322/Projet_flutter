@@ -7,6 +7,7 @@ import '../../models/livre.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
+import '../auth/login_view.dart';
 
 /// Fiche détaillée d'un livre avec actions (emprunter, réserver, wishlist)
 class LivreDetailView extends StatelessWidget {
@@ -420,7 +421,7 @@ class _VisitorBar extends StatelessWidget {
       ),
       child: SafeArea(
         child: ElevatedButton.icon(
-          onPressed: () => Navigator.pushNamed(context, '/login'),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginView())),
           icon: const Icon(Icons.login),
           label: const Text('Connectez-vous pour emprunter'),
         ),

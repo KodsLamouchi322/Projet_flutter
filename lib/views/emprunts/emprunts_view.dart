@@ -6,6 +6,7 @@ import '../../models/emprunt.dart';
 import '../../models/reservation.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
+import '../auth/login_view.dart';
 
 /// Écran complet des emprunts et réservations du membre
 class EmpruntsView extends StatefulWidget {
@@ -103,6 +104,12 @@ class _EmpruntsViewState extends State<EmpruntsView>
               'Accédez à l’historique complet, aux réservations\net aux rappels de retard.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginView())),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+              child: const Text('Se connecter'),
             ),
           ],
         ),
