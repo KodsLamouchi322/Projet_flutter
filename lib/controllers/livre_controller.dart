@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/livre.dart';
 import '../services/firestore_service.dart';
+import '../utils/constants.dart';
+import '../services/cache_service.dart';
 
 enum LivreStatus { initial, loading, loaded, error }
 
@@ -14,11 +16,11 @@ class LivreController extends ChangeNotifier {
   List<Livre> _livres = [];
   List<Livre> _resultatsRecherche = [];
   String _genreSelectionne = '';
-  final String _rechercheQuery = '';
   String? _errorMessage;
   bool _rechercheActive = false;
   bool _filtreDisponiblesSeulement = false;
   LivreTri _tri = LivreTri.titre;
+  bool _donneesDepuisCache = false;
 
   // ─── Getters ──────────────────────────────────────────────────────────────
   LivreStatus get status => _status;
@@ -28,6 +30,7 @@ class LivreController extends ChangeNotifier {
   bool get rechercheActive => _rechercheActive;
   bool get filtreDisponiblesSeulement => _filtreDisponiblesSeulement;
   LivreTri get tri => _tri;
+  bool get donneesDepuisCache => _donneesDepuisCache;
 
   List<Livre> get livres {
     List<Livre> result;
@@ -88,11 +91,22 @@ class LivreController extends ChangeNotifier {
       (livres) {
         _livres = livres;
         _status = LivreStatus.loaded;
+        _donneesDepuisCache = false;
+        CacheService.sauvegarderLivres(livres);
         notifyListeners();
       },
       onError: (e) {
-        _status = LivreStatus.error;
-        _errorMessage = e.toString();
+        final cached = CacheService.getLivresCaches();
+        if (cached.isNotEmpty) {
+          _livres = cached;
+          _status = LivreStatus.loaded;
+          _donneesDepuisCache = true;
+          _errorMessage = AppConstants.modeHorsLigneCache;
+        } else {
+          _status = LivreStatus.error;
+          _donneesDepuisCache = false;
+          _errorMessage = e.toString();
+        }
         notifyListeners();
       },
     );

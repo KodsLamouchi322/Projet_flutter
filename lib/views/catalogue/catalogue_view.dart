@@ -3,15 +3,16 @@ import 'package:provider/provider.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/livre_controller.dart';
 import '../../models/livre.dart';
+import '../../l10n/app_localizations.dart';
 import '../../utils/constants.dart';
+import '../../widgets/app_buttons.dart';
+import '../../widgets/empty_state_widget.dart';
 import '../../widgets/livre_card.dart';
 import '../admin/ajouter_livre_view.dart';
 import 'livre_detail_view.dart';
 
-/// Écran catalogue — liste, recherche, filtres par genre
 class CatalogueView extends StatefulWidget {
   const CatalogueView({super.key});
-
   @override
   State<CatalogueView> createState() => _CatalogueViewState();
 }
@@ -21,182 +22,165 @@ class _CatalogueViewState extends State<CatalogueView> {
   bool _viewGrid = false;
 
   @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
+  void dispose() { _searchCtrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
+    final auth     = context.watch<AuthController>();
     final livreCtrl = context.watch<LivreController>();
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.primaryDark,
         foregroundColor: Colors.white,
-        title: const Text('Catalogue'),
+        elevation: 0,
+        title: const Text('Catalogue', style: TextStyle(fontWeight: FontWeight.w800)),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(_viewGrid ? Icons.list : Icons.grid_view),
+            icon: Icon(_viewGrid ? Icons.view_list_rounded : Icons.grid_view_rounded),
             onPressed: () => setState(() => _viewGrid = !_viewGrid),
-            tooltip: _viewGrid ? 'Vue liste' : 'Vue grille',
           ),
           if (auth.estAdmin)
             IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AjouterLivreView()),
-              ),
-              tooltip: 'Ajouter un livre',
+              icon: const Icon(Icons.add_rounded),
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const AjouterLivreView())),
             ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
-          child: _BarreRecherche(
+          preferredSize: const Size.fromHeight(58),
+          child: _SearchBar(
             controller: _searchCtrl,
-            onChanged: (q) => livreCtrl.rechercher(q),
-            onClear: () {
-              _searchCtrl.clear();
-              livreCtrl.annulerRecherche();
-            },
+            onChanged: livreCtrl.rechercher,
+            onClear: () { _searchCtrl.clear(); livreCtrl.annulerRecherche(); },
           ),
         ),
       ),
-      body: Column(
-        children: [
-          // ── Filtres genres ──
-          _FiltresGenres(
-            genreSelectionne: livreCtrl.genreSelectionne,
-            onSelect: livreCtrl.filtrerParGenre,
+      body: Column(children: [
+        if (livreCtrl.donneesDepuisCache)
+          Material(
+            color: AppColors.warningLight,
+            child: ListTile(
+              dense: true,
+              leading: const Icon(Icons.cloud_off_rounded, color: AppColors.accentDark),
+              title: Text(
+                l10n.offlineCatalogBanner,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
           ),
-
-          // ── Filtres avancés (disponibilité, tri) ──
-          _FiltresAvances(
-            seulementDisponibles: livreCtrl.filtreDisponiblesSeulement,
-            tri: livreCtrl.tri,
-            onToggleDisponibles: livreCtrl.basculerDisponiblesSeulement,
-            onChangeTri: livreCtrl.changerTri,
-          ),
-
-          // ── Résultats ──
-          Expanded(
-            child: livreCtrl.isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : livreCtrl.livres.isEmpty
-                    ? _EmptyState(
-                        recherche: livreCtrl.rechercheActive,
-                        onReset: () {
-                          _searchCtrl.clear();
-                          livreCtrl.annulerRecherche();
-                          livreCtrl.reinitialiserFiltres();
-                        },
-                      )
-                    : _viewGrid
-                        ? _GrilleVue(
-                            livres: livreCtrl.livres,
-                            onTap: (l) => _voirDetail(context, l),
-                          )
-                        : _ListeVue(
-                            livres: livreCtrl.livres,
-                            onTap: (l) => _voirDetail(context, l),
-                          ),
-          ),
-        ],
-      ),
+        // Filtres genres
+        _GenreChips(
+          selected: livreCtrl.genreSelectionne,
+          onSelect: livreCtrl.filtrerParGenre,
+        ),
+        // Filtres avancés
+        _AdvancedFilters(
+          seulementDisponibles: livreCtrl.filtreDisponiblesSeulement,
+          tri: livreCtrl.tri,
+          onToggle: livreCtrl.basculerDisponiblesSeulement,
+          onTri: livreCtrl.changerTri,
+        ),
+        // Résultats
+        Expanded(
+          child: livreCtrl.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : livreCtrl.livres.isEmpty
+                  ? _Empty(
+                      recherche: livreCtrl.rechercheActive,
+                      onReset: () {
+                        _searchCtrl.clear();
+                        livreCtrl.annulerRecherche();
+                        livreCtrl.reinitialiserFiltres();
+                      },
+                    )
+                  : _viewGrid
+                      ? _GridView(livres: livreCtrl.livres,
+                          onTap: (l) => _detail(context, l))
+                      : _ListView(livres: livreCtrl.livres,
+                          onTap: (l) => _detail(context, l)),
+        ),
+      ]),
     );
   }
 
-  void _voirDetail(BuildContext context, Livre livre) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => LivreDetailView(livre: livre)),
-    );
-  }
+  void _detail(BuildContext context, Livre l) =>
+      Navigator.push(context, MaterialPageRoute(builder: (_) => LivreDetailView(livre: l)));
 }
 
-// ── Barre de recherche ────────────────────────────────────────────────────────
-class _BarreRecherche extends StatelessWidget {
+// ─── Barre recherche ──────────────────────────────────────────────────────────
+class _SearchBar extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
-
-  const _BarreRecherche({
-    required this.controller,
-    required this.onChanged,
-    required this.onClear,
-  });
+  const _SearchBar({required this.controller, required this.onChanged, required this.onClear});
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      child: TextField(
-        controller: controller,
-        onChanged: onChanged,
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          hintText: 'Titre, auteur, genre, ISBN...',
-          hintStyle: const TextStyle(color: Colors.white60),
-          prefixIcon: const Icon(Icons.search, color: Colors.white60),
-          suffixIcon: controller.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, color: Colors.white60),
-                  onPressed: onClear,
-                )
-              : null,
-          filled: true,
-          fillColor: Colors.white.withOpacity(0.15),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(25),
-            borderSide: BorderSide.none,
-          ),
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 10),
-        ),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+    child: TextField(
+      controller: controller, onChanged: onChanged,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        hintText: 'Titre, auteur, genre, ISBN...',
+        hintStyle: const TextStyle(color: Colors.white54),
+        prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54),
+        suffixIcon: controller.text.isNotEmpty
+            ? IconButton(icon: const Icon(Icons.clear_rounded, color: Colors.white54), onPressed: onClear)
+            : null,
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.15),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none),
+        contentPadding: const EdgeInsets.symmetric(vertical: 10),
       ),
-    );
-  }
+    ),
+  );
 }
 
-// ── Filtres genres ────────────────────────────────────────────────────────────
-class _FiltresGenres extends StatelessWidget {
-  final String genreSelectionne;
+// ─── Chips genres ─────────────────────────────────────────────────────────────
+class _GenreChips extends StatelessWidget {
+  final String selected;
   final ValueChanged<String> onSelect;
-
-  const _FiltresGenres({
-    required this.genreSelectionne,
-    required this.onSelect,
-  });
+  const _GenreChips({required this.selected, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SizedBox(
-      height: 48,
+      height: 46,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         itemCount: AppConstants.genres.length,
-        itemBuilder: (ctx, i) {
+        itemBuilder: (_, i) {
           final genre = AppConstants.genres[i];
-          final selected = genre == genreSelectionne;
+          final sel = genre == selected;
           return Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              label: Text(genre),
-              selected: selected,
-              onSelected: (_) => onSelect(genre),
-              backgroundColor: Colors.white,
-              selectedColor: AppColors.primary,
-              labelStyle: TextStyle(
-                color: selected ? Colors.white : AppColors.textPrimary,
-                fontSize: 12,
+            child: GestureDetector(
+              onTap: () => onSelect(genre),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                decoration: BoxDecoration(
+                  gradient: sel ? AppColors.gradientCard : null,
+                  color: sel ? null : (isDark ? AppColors.surfaceVariantDark : Colors.white),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: sel ? Colors.transparent
+                        : Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+                  ),
+                  boxShadow: sel ? AppUI.cardShadow : null,
+                ),
+                child: Text(genre,
+                    style: TextStyle(
+                      fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                      color: sel ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                    )),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
             ),
           );
         },
@@ -205,169 +189,122 @@ class _FiltresGenres extends StatelessWidget {
   }
 }
 
-// ── Filtres avancés (disponibilité, tri) ─────────────────────────────────────
-
-class _FiltresAvances extends StatelessWidget {
+// ─── Filtres avancés ──────────────────────────────────────────────────────────
+class _AdvancedFilters extends StatelessWidget {
   final bool seulementDisponibles;
   final LivreTri tri;
-  final VoidCallback onToggleDisponibles;
-  final ValueChanged<LivreTri> onChangeTri;
-
-  const _FiltresAvances({
-    required this.seulementDisponibles,
-    required this.tri,
-    required this.onToggleDisponibles,
-    required this.onChangeTri,
-  });
+  final VoidCallback onToggle;
+  final ValueChanged<LivreTri> onTri;
+  const _AdvancedFilters({required this.seulementDisponibles, required this.tri,
+      required this.onToggle, required this.onTri});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 4,
-      ),
-      child: Row(
-        children: [
-          // Disponibilité
-          FilterChip(
-            label: const Text(
-              'Disponibles seulement',
-              style: TextStyle(fontSize: 12),
-            ),
-            selected: seulementDisponibles,
-            onSelected: (_) => onToggleDisponibles(),
-            backgroundColor: Colors.white,
-            selectedColor: AppColors.success.withOpacity(0.15),
-            checkmarkColor: AppColors.success,
-            labelStyle: TextStyle(
-              color: seulementDisponibles
-                  ? AppColors.success
-                  : AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Spacer(),
-          // Tri par popularité
-          ChoiceChip(
-            label: const Text('Populaires', style: TextStyle(fontSize: 12)),
-            selected: tri == LivreTri.popularite,
-            onSelected: (_) => onChangeTri(LivreTri.popularite),
-            selectedColor: AppColors.accent.withOpacity(0.2),
-            labelStyle: TextStyle(
-              color: tri == LivreTri.popularite
-                  ? AppColors.accentDark
-                  : AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Tri par nouveauté
-          ChoiceChip(
-            label: const Text('Nouveautés', style: TextStyle(fontSize: 12)),
-            selected: tri == LivreTri.nouveaute,
-            onSelected: (_) => onChangeTri(LivreTri.nouveaute),
-            selectedColor: AppColors.primaryLight.withOpacity(0.15),
-            labelStyle: TextStyle(
-              color: tri == LivreTri.nouveaute
-                  ? AppColors.primaryDark
-                  : AppColors.textPrimary,
-            ),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(children: [
+        _Chip(
+          label: 'Disponibles',
+          selected: seulementDisponibles,
+          color: AppColors.success,
+          onTap: onToggle,
+        ),
+        const SizedBox(width: 8),
+        _Chip(
+          label: 'Populaires',
+          selected: tri == LivreTri.popularite,
+          color: AppColors.accent,
+          onTap: () => onTri(LivreTri.popularite),
+        ),
+        const SizedBox(width: 8),
+        _Chip(
+          label: 'Nouveautés',
+          selected: tri == LivreTri.nouveaute,
+          color: AppColors.primary,
+          onTap: () => onTri(LivreTri.nouveaute),
+        ),
+      ]),
     );
   }
 }
 
-// ── Vue liste ─────────────────────────────────────────────────────────────────
-class _ListeVue extends StatelessWidget {
-  final List<Livre> livres;
-  final Function(Livre) onTap;
-
-  const _ListeVue({required this.livres, required this.onTap});
+class _Chip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+  const _Chip({required this.label, required this.selected, required this.color, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: livres.length,
-      itemBuilder: (ctx, i) => LivreListTile(
-        livre: livres[i],
-        onTap: () => onTap(livres[i]),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: selected ? color.withValues(alpha: 0.4)
+              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+        ),
       ),
-    );
-  }
+      child: Text(label,
+          style: TextStyle(
+            fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+          )),
+    ),
+  );
 }
 
-// ── Vue grille ────────────────────────────────────────────────────────────────
-class _GrilleVue extends StatelessWidget {
+// ─── Vues ─────────────────────────────────────────────────────────────────────
+class _ListView extends StatelessWidget {
   final List<Livre> livres;
   final Function(Livre) onTap;
-
-  const _GrilleVue({required this.livres, required this.onTap});
+  const _ListView({required this.livres, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(AppSizes.paddingMedium),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.55,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: livres.length,
-      itemBuilder: (ctx, i) => LivreCard(
-        livre: livres[i],
-        onTap: () => onTap(livres[i]),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => ListView.builder(
+    itemCount: livres.length,
+    itemBuilder: (_, i) => LivreListTile(livre: livres[i], onTap: () => onTap(livres[i])),
+  );
 }
 
-// ── État vide ─────────────────────────────────────────────────────────────────
-class _EmptyState extends StatelessWidget {
+class _GridView extends StatelessWidget {
+  final List<Livre> livres;
+  final Function(Livre) onTap;
+  const _GridView({required this.livres, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GridView.builder(
+    padding: const EdgeInsets.all(16),
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 3, childAspectRatio: 0.52,
+      crossAxisSpacing: 12, mainAxisSpacing: 12,
+    ),
+    itemCount: livres.length,
+    itemBuilder: (_, i) => LivreCard(livre: livres[i], onTap: () => onTap(livres[i])),
+  );
+}
+
+// ─── État vide ────────────────────────────────────────────────────────────────
+class _Empty extends StatelessWidget {
   final bool recherche;
   final VoidCallback onReset;
-
-  const _EmptyState({required this.recherche, required this.onReset});
+  const _Empty({required this.recherche, required this.onReset});
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            recherche ? Icons.search_off : Icons.library_books_outlined,
-            size: 72,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            recherche
-                ? 'Aucun résultat trouvé'
-                : 'Le catalogue est vide',
-            style: AppTextStyles.headline2.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            recherche
-                ? 'Essayez avec d\'autres mots-clés'
-                : 'Revenez plus tard',
-            style: const TextStyle(color: AppColors.textSecondary),
-          ),
-          if (recherche) ...[
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: onReset,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Réinitialiser'),
-            ),
-          ]
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => EmptyStateWidget(
+        icon: recherche ? Icons.search_off_rounded : Icons.library_books_outlined,
+        title: recherche ? 'Aucun résultat' : 'Catalogue vide',
+        subtitle: recherche ? 'Essayez d\'autres mots-clés' : 'Revenez plus tard',
+        action: recherche
+            ? AppSecondaryButton(
+                label: 'Réinitialiser',
+                icon: Icons.refresh_rounded,
+                onPressed: onReset,
+              )
+            : null,
+      );
 }

@@ -2,17 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/message_controller.dart';
 import '../../controllers/auth_controller.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/message.dart';
+import '../../services/message_notification_service.dart';
 import '../../utils/constants.dart';
 
 class ConversationView extends StatefulWidget {
   final String conversationId;
   final String autreNom;
+  final List<String> participantsIds;
 
   const ConversationView({
     super.key,
     required this.conversationId,
     required this.autreNom,
+    required this.participantsIds,
   });
 
   @override
@@ -30,12 +34,19 @@ class _ConversationViewState extends State<ConversationView> {
     context
         .read<MessageController>()
         .marquerCommeLu(widget.conversationId, uid);
+    
+    // Indiquer qu'on est dans cette conversation (pour ne pas notifier)
+    MessageNotificationService().setCurrentConversation(widget.conversationId);
   }
 
   @override
   void dispose() {
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
+    
+    // Indiquer qu'on n'est plus dans une conversation
+    MessageNotificationService().setCurrentConversation(null);
+    
     super.dispose();
   }
 
@@ -49,6 +60,7 @@ class _ConversationViewState extends State<ConversationView> {
           expediteurNom:
               '${auth.membre?.prenom} ${auth.membre?.nom}',
           contenu: text,
+          participantsIds: widget.participantsIds,
         );
     _msgCtrl.clear();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -67,6 +79,7 @@ class _ConversationViewState extends State<ConversationView> {
     final auth = context.watch<AuthController>();
     final uid = auth.membre?.uid ?? '';
     final ctrl = context.read<MessageController>();
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -110,9 +123,9 @@ class _ConversationViewState extends State<ConversationView> {
                 }
                 final messages = snap.data!;
                 if (messages.isEmpty) {
-                  return const Center(
-                    child: Text('Démarrez la conversation !',
-                        style: TextStyle(
+                  return Center(
+                    child: Text(l10n.startConversationNow,
+                        style: const TextStyle(
                             color: AppColors.textSecondary)),
                   );
                 }
@@ -149,18 +162,23 @@ class _ConversationViewState extends State<ConversationView> {
                     maxLines: null,
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _envoyerMessage(),
-                    decoration: InputDecoration(
+                    decoration: AppInputDecoration.standard(
+                      label: 'Message',
+                      icon: Icons.chat_bubble_outline_rounded,
+                    ).copyWith(
                       hintText: 'Écrire un message...',
-                      hintStyle: const TextStyle(
-                          fontSize: 14,
-                          color: AppColors.textSecondary),
-                      filled: true,
-                      fillColor: AppColors.background,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                      hintStyle: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 2),
                       ),
                     ),
                   ),

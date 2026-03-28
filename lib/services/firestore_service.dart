@@ -97,7 +97,7 @@ class FirestoreService {
   Future<List<Livre>> getLivresPopulaires({int limit = 10}) async {
     final snap = await _db
         .collection(AppConstants.colLivres)
-        .orderBy('nbEmprunts', descending: true)
+        .orderBy('nbEmpruntsTotal', descending: true)
         .limit(limit)
         .get();
     return snap.docs.map((d) => Livre.fromFirestore(d)).toList();
@@ -173,11 +173,10 @@ class FirestoreService {
 
   /// Tous les membres (admin)
   Future<List<Membre>> getTousMembres() async {
-    final snap = await _db
-        .collection(AppConstants.colMembres)
-        .orderBy('nom')
-        .get();
-    return snap.docs.map((d) => Membre.fromFirestore(d)).toList();
+    final snap = await _db.collection(AppConstants.colMembres).get();
+    final list = snap.docs.map((d) => Membre.fromFirestore(d)).toList()
+      ..sort((a, b) => a.nom.compareTo(b.nom));
+    return list;
   }
 
   /// Mettre à jour le profil d'un membre
@@ -220,10 +219,12 @@ class FirestoreService {
         .collection(AppConstants.colEmprunts)
         .where('membreId', isEqualTo: membreId)
         .where('statut', whereIn: ['enCours', 'enRetard'])
-        .orderBy('dateRetourPrevue')
         .snapshots()
-        .map((snap) =>
-            snap.docs.map((d) => Emprunt.fromFirestore(d)).toList());
+        .map((snap) {
+          final list = snap.docs.map((d) => Emprunt.fromFirestore(d)).toList();
+          list.sort((a, b) => a.dateRetourPrevue.compareTo(b.dateRetourPrevue));
+          return list;
+        });
   }
 
   /// Emprunts en retard (admin)
@@ -237,28 +238,69 @@ class FirestoreService {
 
   /// Statistiques d'emprunts (admin)
   Future<Map<String, int>> getStatsEmprunts() async {
-    final actifs = await _db
-        .collection(AppConstants.colEmprunts)
-        .where('statut', isEqualTo: 'enCours')
-        .count()
-        .get();
+    int actifsCount = 0;
+    int retardCount = 0;
+    int reservationsCount = 0;
+    int retoursEnAttenteCount = 0;
+    int prolongationsEnAttente = 0;
 
-    final retard = await _db
-        .collection(AppConstants.colEmprunts)
-        .where('statut', isEqualTo: 'enRetard')
-        .count()
-        .get();
+    try {
+      final actifs = await _db
+          .collection(AppConstants.colEmprunts)
+          .where('statut', isEqualTo: 'enCours')
+          .count()
+          .get();
+      actifsCount = actifs.count ?? 0;
+    } catch (_) {}
 
-    final reservations = await _db
-        .collection(AppConstants.colReservations)
-        .where('statut', isEqualTo: 'enAttente')
-        .count()
-        .get();
+    try {
+      final retard = await _db
+          .collection(AppConstants.colEmprunts)
+          .where('statut', isEqualTo: 'enRetard')
+          .count()
+          .get();
+      retardCount = retard.count ?? 0;
+    } catch (_) {}
+
+    try {
+      // Utilise la même logique que l'écran admin réservations (liste docs),
+      // afin d'éviter un éventuel écart avec l'agrégation count().
+      final reservations = await _db
+          .collection(AppConstants.colReservations)
+          .where('statut', isEqualTo: 'enAttente')
+          .get();
+      reservationsCount = reservations.docs.length;
+    } catch (_) {}
+
+    try {
+      final retoursEnAttente = await _db
+          .collection(AppConstants.colEmprunts)
+          .where('statut', isEqualTo: 'enAttenteRetour')
+          .count()
+          .get();
+      retoursEnAttenteCount = retoursEnAttente.count ?? 0;
+    } catch (_) {}
+
+    // Calcul robuste sans index composite: filtre en mémoire.
+    try {
+      final snap = await _db
+          .collection(AppConstants.colEmprunts)
+          .where('statut', whereIn: ['enCours', 'enRetard', 'prolonge'])
+          .get();
+      prolongationsEnAttente = snap.docs.where((d) {
+        final data = d.data();
+        final autorisee = (data['prolongationAutorisee'] ?? false) as bool;
+        final nb = (data['prolongations'] ?? 0) as int;
+        return !autorisee && nb < AppConstants.maxProlongations;
+      }).length;
+    } catch (_) {}
 
     return {
-      'actifs': actifs.count ?? 0,
-      'enRetard': retard.count ?? 0,
-      'reservations': reservations.count ?? 0,
+      'actifs': actifsCount,
+      'enRetard': retardCount,
+      'reservations': reservationsCount,
+      'retoursEnAttente': retoursEnAttenteCount,
+      'prolongationsEnAttente': prolongationsEnAttente,
     };
   }
 
@@ -272,10 +314,12 @@ class FirestoreService {
         .collection(AppConstants.colReservations)
         .where('membreId', isEqualTo: membreId)
         .where('statut', isEqualTo: 'enAttente')
-        .orderBy('dateReservation')
         .snapshots()
-        .map((snap) =>
-            snap.docs.map((d) => Reservation.fromFirestore(d)).toList());
+        .map((snap) {
+          final list = snap.docs.map((d) => Reservation.fromFirestore(d)).toList();
+          list.sort((a, b) => a.dateReservation.compareTo(b.dateReservation));
+          return list;
+        });
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -323,10 +367,15 @@ class FirestoreService {
   Future<Map<String, int>> getStatsGenerales() async {
     final livres = await _db.collection(AppConstants.colLivres).count().get();
     final membres = await _db.collection(AppConstants.colMembres).count().get();
+    final disponibles = await _db
+        .collection(AppConstants.colLivres)
+        .where('statut', isEqualTo: 'disponible')
+        .count()
+        .get();
     final stats = await getStatsEmprunts();
     return {
       'totalLivres': livres.count ?? 0,
-      'livresDisponibles': 0,
+      'livresDisponibles': disponibles.count ?? 0,
       'totalMembres': membres.count ?? 0,
       'empruntsEnCours': stats['actifs'] ?? 0,
     };

@@ -16,6 +16,10 @@ class Evenement {
   final String categorie;
   final bool estPublic;
   final DateTime createdAt;
+  // Nouvelles fonctionnalités
+  final List<String> photosUrls;       // photos de l'événement
+  final String? compteRendu;           // compte-rendu post-événement
+  final List<String> photosCompteRendu; // photos du compte-rendu
 
   Evenement({
     required this.id,
@@ -31,9 +35,11 @@ class Evenement {
     required this.categorie,
     required this.estPublic,
     required this.createdAt,
+    this.photosUrls = const [],
+    this.compteRendu,
+    this.photosCompteRendu = const [],
   });
 
-  // Calculer le statut depuis les dates
   StatutEvenement get statut {
     final now = DateTime.now();
     if (dateDebut.isAfter(now)) return StatutEvenement.aVenir;
@@ -44,7 +50,6 @@ class Evenement {
   int get placesRestantes => capaciteMax - participantsIds.length;
   bool get estComplet => participantsIds.length >= capaciteMax;
   bool get aDesPlaces => placesRestantes > 0;
-
   bool estParticipant(String uid) => participantsIds.contains(uid);
 
   factory Evenement.fromFirestore(DocumentSnapshot doc) {
@@ -65,66 +70,57 @@ class Evenement {
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
+      photosUrls: List<String>.from(data['photosUrls'] ?? []),
+      compteRendu: data['compteRendu'],
+      photosCompteRendu: List<String>.from(data['photosCompteRendu'] ?? []),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
-    return {
-      'titre': titre,
-      'description': description,
-      'dateDebut': Timestamp.fromDate(dateDebut),
-      'dateFin': Timestamp.fromDate(dateFin),
-      'lieu': lieu,
-      'capaciteMax': capaciteMax,
-      'participantsIds': participantsIds,
-      'organisateurId': organisateurId,
-      'imageUrl': imageUrl,
-      'categorie': categorie,
-      'estPublic': estPublic,
-      'createdAt': Timestamp.fromDate(createdAt),
-    };
-  }
+  Map<String, dynamic> toFirestore() => {
+    'titre': titre,
+    'description': description,
+    'dateDebut': Timestamp.fromDate(dateDebut),
+    'dateFin': Timestamp.fromDate(dateFin),
+    'lieu': lieu,
+    'capaciteMax': capaciteMax,
+    'participantsIds': participantsIds,
+    'organisateurId': organisateurId,
+    'imageUrl': imageUrl,
+    'categorie': categorie,
+    'estPublic': estPublic,
+    'createdAt': Timestamp.fromDate(createdAt),
+    'photosUrls': photosUrls,
+    'compteRendu': compteRendu,
+    'photosCompteRendu': photosCompteRendu,
+  };
 
   Evenement copyWith({
-    String? id,
-    String? titre,
-    String? description,
-    DateTime? dateDebut,
-    DateTime? dateFin,
-    String? lieu,
-    int? capaciteMax,
-    List<String>? participantsIds,
-    String? organisateurId,
-    String? imageUrl,
-    String? categorie,
-    bool? estPublic,
-    DateTime? createdAt,
-  }) {
-    return Evenement(
-      id: id ?? this.id,
-      titre: titre ?? this.titre,
-      description: description ?? this.description,
-      dateDebut: dateDebut ?? this.dateDebut,
-      dateFin: dateFin ?? this.dateFin,
-      lieu: lieu ?? this.lieu,
-      capaciteMax: capaciteMax ?? this.capaciteMax,
-      participantsIds: participantsIds ?? this.participantsIds,
-      organisateurId: organisateurId ?? this.organisateurId,
-      imageUrl: imageUrl ?? this.imageUrl,
-      categorie: categorie ?? this.categorie,
-      estPublic: estPublic ?? this.estPublic,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
+    String? id, String? titre, String? description,
+    DateTime? dateDebut, DateTime? dateFin, String? lieu,
+    int? capaciteMax, List<String>? participantsIds, String? organisateurId,
+    String? imageUrl, String? categorie, bool? estPublic, DateTime? createdAt,
+    List<String>? photosUrls, String? compteRendu, List<String>? photosCompteRendu,
+  }) => Evenement(
+    id: id ?? this.id,
+    titre: titre ?? this.titre,
+    description: description ?? this.description,
+    dateDebut: dateDebut ?? this.dateDebut,
+    dateFin: dateFin ?? this.dateFin,
+    lieu: lieu ?? this.lieu,
+    capaciteMax: capaciteMax ?? this.capaciteMax,
+    participantsIds: participantsIds ?? this.participantsIds,
+    organisateurId: organisateurId ?? this.organisateurId,
+    imageUrl: imageUrl ?? this.imageUrl,
+    categorie: categorie ?? this.categorie,
+    estPublic: estPublic ?? this.estPublic,
+    createdAt: createdAt ?? this.createdAt,
+    photosUrls: photosUrls ?? this.photosUrls,
+    compteRendu: compteRendu ?? this.compteRendu,
+    photosCompteRendu: photosCompteRendu ?? this.photosCompteRendu,
+  );
 
   static const List<String> categories = [
-    'Club de lecture',
-    'Atelier écriture',
-    'Conférence',
-    'Exposition',
-    'Jeunesse',
-    'Cinéma',
-    'Musique',
-    'Autre',
+    'Club de lecture', 'Atelier écriture', 'Conférence',
+    'Exposition', 'Jeunesse', 'Cinéma', 'Musique', 'Autre',
   ];
 }

@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/membre.dart';
 import '../utils/constants.dart';
 
@@ -76,6 +78,65 @@ class AuthService {
       return membre;
     } on FirebaseAuthException catch (e) {
       throw e.code;
+    }
+  }
+
+  // ─── Connexion / inscription avec Google ───────────────────────────────────
+  Future<Membre> connecterAvecGoogle() async {
+    try {
+      UserCredential credential;
+
+      if (kIsWeb) {
+        final googleProvider = GoogleAuthProvider();
+        googleProvider.addScope('email');
+        credential = await _auth.signInWithPopup(googleProvider);
+      } else {
+        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+        if (googleUser == null) {
+          throw 'user-cancelled';
+        }
+        final googleAuth = await googleUser.authentication;
+        final oauthCred = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        credential = await _auth.signInWithCredential(oauthCred);
+      }
+
+      final user = credential.user!;
+
+      // Vérifier si un profil membre existe déjà
+      var membre = await getMembre(user.uid);
+      if (membre == null) {
+        final displayName = user.displayName ?? '';
+        final parts = displayName.trim().split(' ');
+        final prenom = parts.isNotEmpty ? parts.first : '';
+        final nom =
+            parts.length > 1 ? parts.sublist(1).join(' ') : (displayName);
+
+        membre = Membre(
+          uid: user.uid,
+          nom: nom,
+          prenom: prenom,
+          email: user.email ?? '',
+          telephone: '',
+          dateAdhesion: DateTime.now(),
+          role: RoleMembre.membre,
+          statut: StatutMembre.actif,
+        );
+
+        await _firestore
+            .collection(AppConstants.colMembres)
+            .doc(user.uid)
+            .set(membre.toFirestore());
+      }
+
+      return membre;
+    } on FirebaseAuthException catch (e) {
+      throw e.code;
+    } catch (e) {
+      // Autres erreurs
+      throw e.toString();
     }
   }
 

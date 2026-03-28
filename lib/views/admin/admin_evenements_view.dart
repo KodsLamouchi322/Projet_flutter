@@ -5,6 +5,8 @@ import '../../controllers/auth_controller.dart';
 import '../../controllers/evenement_controller.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
+import '../../widgets/app_buttons.dart';
+import '../../widgets/empty_state_widget.dart';
 
 /// Gestion des événements côté administrateur :
 /// - liste des événements
@@ -82,8 +84,10 @@ class _AdminEvenementsViewState extends State<AdminEvenementsView> {
           );
         },
         backgroundColor: AppColors.accent,
-        icon: const Icon(Icons.add),
-        label: const Text('Nouvel événement'),
+        foregroundColor: const Color(0xFF1A1A1A), // Texte noir foncé
+        icon: const Icon(Icons.add, color: Color(0xFF1A1A1A)),
+        label: const Text('Nouvel événement',
+            style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w800)),
       ),
     );
   }
@@ -173,35 +177,10 @@ class _EmptyAdminEvenements extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSizes.paddingLarge),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.event_busy,
-                size: 64, color: AppColors.divider),
-            const SizedBox(height: 16),
-            const Text(
-              'Aucun événement pour le moment',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Créez votre premier événement culturel pour la bibliothèque.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return const EmptyStateWidget(
+      icon: Icons.event_busy,
+      title: 'Aucun événement pour le moment',
+      subtitle: 'Créez votre premier événement culturel pour la bibliothèque.',
     );
   }
 }
@@ -271,14 +250,20 @@ class _EvenementFormViewState extends State<_EvenementFormView> {
             children: [
               TextFormField(
                 controller: _titreCtrl,
-                decoration: const InputDecoration(labelText: 'Titre'),
+                decoration: AppInputDecoration.standard(
+                  label: 'Titre',
+                  icon: Icons.title,
+                ),
                 validator: (v) =>
                     v == null || v.trim().isEmpty ? 'Titre requis' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _descriptionCtrl,
-                decoration: const InputDecoration(labelText: 'Description'),
+                decoration: AppInputDecoration.standard(
+                  label: 'Description',
+                  icon: Icons.notes_rounded,
+                ),
                 maxLines: 3,
                 validator: (v) =>
                     v == null || v.trim().isEmpty ? 'Description requise' : null,
@@ -286,7 +271,10 @@ class _EvenementFormViewState extends State<_EvenementFormView> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _lieuCtrl,
-                decoration: const InputDecoration(labelText: 'Lieu'),
+                decoration: AppInputDecoration.standard(
+                  label: 'Lieu',
+                  icon: Icons.place_outlined,
+                ),
                 validator: (v) =>
                     v == null || v.trim().isEmpty ? 'Lieu requis' : null,
               ),
@@ -294,8 +282,10 @@ class _EvenementFormViewState extends State<_EvenementFormView> {
               TextFormField(
                 controller: _capaciteCtrl,
                 keyboardType: TextInputType.number,
-                decoration:
-                    const InputDecoration(labelText: 'Capacité maximale'),
+                decoration: AppInputDecoration.standard(
+                  label: 'Capacité maximale',
+                  icon: Icons.people_outline_rounded,
+                ),
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Capacité requise';
                   final value = int.tryParse(v);
@@ -330,7 +320,10 @@ class _EvenementFormViewState extends State<_EvenementFormView> {
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _categorie,
-                decoration: const InputDecoration(labelText: 'Catégorie'),
+                decoration: AppInputDecoration.standard(
+                  label: 'Catégorie',
+                  icon: Icons.category_outlined,
+                ),
                 items: Evenement.categories
                     .map(
                       (c) => DropdownMenuItem(
@@ -354,10 +347,10 @@ class _EvenementFormViewState extends State<_EvenementFormView> {
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
+                child: AppPrimaryButton(
+                  label: estEdition ? 'Enregistrer' : 'Créer',
+                  icon: estEdition ? Icons.save : Icons.check,
                   onPressed: _saving ? null : () => _save(context),
-                  icon: Icon(estEdition ? Icons.save : Icons.check),
-                  label: Text(estEdition ? 'Enregistrer' : 'Créer'),
                 ),
               ),
             ],

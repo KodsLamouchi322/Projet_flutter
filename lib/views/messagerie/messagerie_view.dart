@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/message_controller.dart';
 import '../../controllers/auth_controller.dart';
+import '../../l10n/app_localizations.dart';
+import '../../models/membre.dart';
 import '../../models/message.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/constants.dart';
 import '../auth/login_view.dart';
 import 'conversation_view.dart';
 
 class MessagerieView extends StatefulWidget {
-  const MessagerieView({super.key});
+  final bool embeddedInCommunity;
+  const MessagerieView({super.key, this.embeddedInCommunity = false});
 
   @override
   State<MessagerieView> createState() => _MessagerieViewState();
@@ -22,12 +27,6 @@ class _MessagerieViewState extends State<MessagerieView>
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final uid = context.read<AuthController>().membre?.uid;
-      if (uid != null) {
-        context.read<MessageController>().chargerConversations(uid);
-      }
-    });
   }
 
   @override
@@ -39,22 +38,43 @@ class _MessagerieViewState extends State<MessagerieView>
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
+    final l10n = AppLocalizations.of(context)!;
+    final tabs = TabBar(
+      controller: _tabCtrl,
+      labelColor: Colors.white,
+      unselectedLabelColor: Colors.white70,
+      indicatorColor: AppColors.accentLight,
+      dividerColor: Colors.transparent,
+      tabs: [
+        Tab(text: l10n.privateMessages),
+        Tab(text: l10n.forum),
+      ],
+    );
+
+    final content = TabBarView(
+      controller: _tabCtrl,
+      children: [
+        _ConversationsTab(showScaffold: !widget.embeddedInCommunity),
+        const _ForumTab(),
+      ],
+    );
+
     if (auth.membre == null) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: AppBar(title: const Text('Messagerie'), backgroundColor: AppColors.primary, foregroundColor: Colors.white, elevation: 0),
+        appBar: AppBar(title: Text(l10n.messagingTitle), backgroundColor: AppColors.primary, foregroundColor: Colors.white, elevation: 0),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.chat_bubble_outline, size: 60, color: AppColors.primary),
               const SizedBox(height: 16),
-              const Text('Vous n\'êtes pas connecté', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              Text(l10n.notConnected, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginView())),
                 style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
-                child: const Text('Se connecter pour discuter'),
+                child: Text(l10n.loginToChat),
               ),
             ],
           ),
@@ -62,77 +82,219 @@ class _MessagerieViewState extends State<MessagerieView>
       );
     }
 
+    if (widget.embeddedInCommunity) {
+      return Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            decoration: BoxDecoration(
+              gradient: AppColors.gradientPrimary,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: AppUI.softShadow,
+            ),
+            child: tabs,
+          ),
+          Expanded(child: content),
+        ],
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Messagerie'),
+        title: Text(l10n.messagingTitle),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabCtrl,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          indicatorColor: AppColors.accent,
-          tabs: const [
-            Tab(text: 'Messages privés'),
-            Tab(text: 'Forum'),
-          ],
-        ),
+        bottom: tabs,
       ),
-      body: TabBarView(
-        controller: _tabCtrl,
-        children: const [
-          _ConversationsTab(),
-          _ForumTab(),
-        ],
-      ),
+      body: content,
     );
   }
 }
 
 // ─── Onglet conversations privées ─────────────────────────────────────────────
 class _ConversationsTab extends StatelessWidget {
-  const _ConversationsTab();
+  final bool showScaffold;
+  const _ConversationsTab({this.showScaffold = true});
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<MessageController>(
-      builder: (_, ctrl, __) {
-        if (ctrl.isLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (ctrl.conversations.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.chat_bubble_outline,
-                    size: 60, color: AppColors.divider),
-                const SizedBox(height: 16),
-                const Text('Aucune conversation',
-                    style: TextStyle(color: AppColors.textSecondary)),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text('Démarrer une conversation'),
-                ),
-              ],
-            ),
+    final auth = context.read<AuthController>();
+    final uid = auth.membre?.uid ?? '';
+    final ctrl = context.read<MessageController>();
+    final l10n = AppLocalizations.of(context)!;
+
+    final content = Stack(
+      children: [
+        StreamBuilder<List<Conversation>>(
+        stream: ctrl.streamConversations(uid),
+        builder: (_, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final conversations = snap.data ?? [];
+          if (conversations.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.chat_bubble_outline,
+                      size: 60, color: AppColors.divider),
+                  const SizedBox(height: 16),
+                  Text(l10n.noConversation,
+                      style: const TextStyle(color: AppColors.textSecondary)),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => _afficherSelecteurMembre(context),
+                    child: Text(l10n.startConversation),
+                  ),
+                ],
+              ),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 86),
+            itemCount: conversations.length,
+            itemBuilder: (_, i) {
+              final conv = conversations[i];
+              return _ConversationTile(conversation: conv, myUid: uid);
+            },
           );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: ctrl.conversations.length,
-          itemBuilder: (_, i) {
-            final conv = ctrl.conversations[i];
-            final auth = context.read<AuthController>();
-            final uid = auth.membre?.uid ?? '';
-            return _ConversationTile(conversation: conv, myUid: uid);
-          },
-        );
-      },
+        },
+      ),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: FloatingActionButton(
+            backgroundColor: AppColors.accent,
+            onPressed: () => _afficherSelecteurMembre(context),
+            child: const Icon(Icons.message, color: Colors.white),
+          ),
+        ),
+      ],
     );
+
+    if (showScaffold) {
+      return Scaffold(backgroundColor: Colors.transparent, body: content);
+    }
+    return content;
+  }
+
+  Future<void> _afficherSelecteurMembre(BuildContext context) async {
+    final auth = context.read<AuthController>();
+    final membreActuel = auth.membre;
+    final l10n = AppLocalizations.of(context)!;
+    if (membreActuel == null) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.newConversation,
+            style: const TextStyle(color: AppColors.primary)),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: FutureBuilder<List<Membre>>(
+            future: _chargerMembres(membreActuel.uid),
+            builder: (contextDialog, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: AppColors.error, size: 40),
+                      const SizedBox(height: 8),
+                      Text('${l10n.error}: ${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 12, color: AppColors.error)),
+                    ],
+                  ),
+                );
+              }
+              final membres = snapshot.data ?? [];
+              if (membres.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.people_outline, size: 48, color: AppColors.divider),
+                      const SizedBox(height: 12),
+                      Text(l10n.noMemberFound,
+                          style: const TextStyle(color: AppColors.textSecondary)),
+                    ],
+                  ),
+                );
+              }
+              return ListView.builder(
+                itemCount: membres.length,
+                itemBuilder: (_, i) {
+                  final m = membres[i];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppColors.primary.withOpacity(0.15),
+                      child: Text(
+                        m.nomComplet.isNotEmpty ? m.nomComplet[0].toUpperCase() : '?',
+                        style: const TextStyle(color: AppColors.primary),
+                      ),
+                    ),
+                    title: Text(m.nomComplet),
+                    subtitle: Text(m.email, style: const TextStyle(fontSize: 11)),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      final ctrl = context.read<MessageController>();
+                      final convId = await ctrl.getOuCreerConversation(
+                        membreId1: membreActuel.uid,
+                        nom1: membreActuel.nomComplet,
+                        membreId2: m.uid,
+                        nom2: m.nomComplet,
+                      );
+                      if (convId != null && context.mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ConversationView(
+                              conversationId: convId,
+                              autreNom: m.nomComplet,
+                              participantsIds: [membreActuel.uid, m.uid],
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.cancel),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Charge les membres directement depuis Firestore
+  Future<List<Membre>> _chargerMembres(String monUid) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('membres')
+          .get();
+      return snap.docs
+          .map((d) => Membre.fromFirestore(d))
+          .where((m) => m.uid != monUid && m.statut != StatutMembre.suspendu)
+          .toList()
+        ..sort((a, b) => a.nomComplet.compareTo(b.nomComplet));
+    } catch (e) {
+      throw Exception('Impossible de charger les membres: $e');
+    }
   }
 }
 
@@ -145,13 +307,19 @@ class _ConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final autreNom = conversation.getNomAutre(myUid);
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      elevation: 0,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.22),
+        ),
+        boxShadow: AppUI.softShadow,
+      ),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: AppColors.primary.withOpacity(0.15),
+          backgroundColor: AppColors.primary.withValues(alpha: 0.15),
           child: Text(
             autreNom.isNotEmpty ? autreNom[0].toUpperCase() : '?',
             style: const TextStyle(
@@ -166,15 +334,15 @@ class _ConversationTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 12),
         ),
-        trailing: conversation.messageNonLus > 0
+        trailing: conversation.getMessageNonLus(myUid) > 0
             ? Container(
                 padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                  color: AppColors.accent,
-                  shape: BoxShape.circle,
+                decoration: BoxDecoration(
+                  gradient: AppColors.gradientAccent,
+                  borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
-                  '${conversation.messageNonLus}',
+                  '${conversation.getMessageNonLus(myUid)}',
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 11,
@@ -188,6 +356,7 @@ class _ConversationTile extends StatelessWidget {
             builder: (_) => ConversationView(
               conversationId: conversation.id,
               autreNom: autreNom,
+              participantsIds: conversation.participantsIds,
             ),
           ),
         ),
@@ -211,6 +380,7 @@ class _ForumTabState extends State<_ForumTab> {
   Widget build(BuildContext context) {
     final ctrl = context.read<MessageController>();
     final auth = context.read<AuthController>();
+    final l10n = AppLocalizations.of(context)!;
 
     return Column(
       children: [
@@ -267,9 +437,9 @@ class _ForumTabState extends State<_ForumTab> {
               }
               final messages = snap.data!;
               if (messages.isEmpty) {
-                return const Center(
-                  child: Text('Aucun message dans ce forum',
-                      style: TextStyle(color: AppColors.textSecondary)),
+                return Center(
+                  child: Text(l10n.noMessageInForum,
+                      style: const TextStyle(color: AppColors.textSecondary)),
                 );
               }
               return ListView.builder(
@@ -319,19 +489,20 @@ class _ForumMessageTile extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         decoration: BoxDecoration(
-          color: isMe ? AppColors.primary : Colors.white,
+          gradient: isMe ? AppColors.gradientPrimary : null,
+          color: isMe ? null : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
             bottomLeft: Radius.circular(isMe ? 16 : 4),
             bottomRight: Radius.circular(isMe ? 4 : 16),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 4,
-            )
-          ],
+          border: isMe
+              ? null
+              : Border.all(
+                  color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+                ),
+          boxShadow: AppUI.softShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,26 +543,39 @@ class _ForumInputFieldState extends State<_ForumInputField> {
   final _ctrl = TextEditingController();
 
   @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       child: Row(
         children: [
           Expanded(
             child: TextField(
               controller: _ctrl,
-              decoration: InputDecoration(
+              decoration: AppInputDecoration.standard(
+                label: 'Forum ${widget.genre}',
+                icon: Icons.forum_outlined,
+              ).copyWith(
                 hintText: 'Écrire dans le forum ${widget.genre}...',
-                hintStyle:
-                    const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                filled: true,
-                fillColor: AppColors.background,
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 12),
+                hintStyle: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
                   borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: const BorderSide(color: AppColors.primary, width: 2),
                 ),
               ),
             ),

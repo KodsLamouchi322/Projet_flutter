@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/emprunt_controller.dart';
-import '../../models/emprunt.dart';
 import '../../models/reservation.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
+import '../../widgets/app_buttons.dart';
+import '../../widgets/empty_state_widget.dart';
+import '../../widgets/emprunt_item.dart';
+import '../../widgets/status_badge.dart';
 import '../auth/login_view.dart';
+import '../catalogue/catalogue_view.dart';
+import 'scan_emprunt_view.dart';
+import '../../services/pdf_service.dart';
 
 /// Écran complet des emprunts et réservations du membre
 class EmpruntsView extends StatefulWidget {
@@ -31,7 +37,7 @@ class _EmpruntsViewState extends State<EmpruntsView>
       final empruntCtrl = context.read<EmpruntController>();
       if (auth.membre != null) {
         final uid = auth.membre!.uid;
-        empruntCtrl.chargerEmpruntsMemebres(uid);
+        empruntCtrl.chargerEmpruntsMembre(uid);
         empruntCtrl.chargerReservationsMembre(uid);
       }
     });
@@ -51,9 +57,18 @@ class _EmpruntsViewState extends State<EmpruntsView>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mes Emprunts'),
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.primaryDark,
         foregroundColor: Colors.white,
         centerTitle: true,
+        actions: [
+          // Bouton scan retour rapide
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            tooltip: 'Scanner un retour',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ScanEmpruntView(modeRetour: true))),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: Colors.white,
@@ -81,38 +96,14 @@ class _EmpruntsViewState extends State<EmpruntsView>
   }
 
   Widget _buildNotConnected() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSizes.paddingLarge),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.lock_outline,
-                size: 64, color: AppColors.primary),
-            const SizedBox(height: 16),
-            const Text(
-              'Connectez-vous pour voir vos emprunts.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Accédez à l’historique complet, aux réservations\net aux rappels de retard.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginView())),
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
-              child: const Text('Se connecter'),
-            ),
-          ],
-        ),
+    return EmptyStateWidget(
+      icon: Icons.lock_outline,
+      title: 'Connectez-vous pour voir vos emprunts',
+      subtitle: 'Accédez à l\'historique complet, aux réservations et aux rappels de retard.',
+      action: AppPrimaryButton(
+        label: 'Se connecter',
+        gradient: AppColors.gradientAccent,
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginView())),
       ),
     );
   }
@@ -132,216 +123,72 @@ class _EmpruntsEnCoursTab extends StatelessWidget {
     }
 
     if (controller.empruntsActifs.isEmpty) {
-      return _EmptyState(
+      return EmptyStateWidget(
         icon: Icons.book_outlined,
         title: 'Aucun emprunt en cours',
-        message:
-            'Empruntez un livre depuis le catalogue pour le voir apparaître ici.',
+        subtitle: 'Empruntez un livre depuis le catalogue pour le voir apparaître ici.',
+        action: AppPrimaryButton(
+          label: 'Explorer le catalogue',
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogueView())),
+          icon: Icons.menu_book_rounded,
+        ),
       );
     }
 
     return ListView.separated(
       padding: const EdgeInsets.all(AppSizes.paddingMedium),
       itemCount: controller.empruntsActifs.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, __) => const SizedBox(height: 4),
       itemBuilder: (context, index) {
         final emprunt = controller.empruntsActifs[index];
-        return _EmpruntActifCard(emprunt: emprunt);
+        final auth = context.read<AuthController>();
+        final empruntCtrl = context.read<EmpruntController>();
+        return EmpruntItem(
+          emprunt: emprunt,
+          onProlonger: () async {
+            // Dialog durée de prolongation personnalisable
+            int dureeChoisie = AppConstants.dureeProlongationJours;
+            final duree = await showDialog<int>(
+              context: context,
+              builder: (_) => _DureeProlongationDialog(dureeDefaut: AppConstants.dureeProlongationJours),
+            );
+            if (duree == null) return;
+            dureeChoisie = duree;
+
+            final ok = await empruntCtrl.prolongerEmprunt(
+              empruntId: emprunt.id,
+              membreId: auth.membre!.uid,
+              dureeJours: dureeChoisie,
+            );
+            if (context.mounted) {
+              ok
+                  ? AppHelpers.showSuccess(context, 'Emprunt prolongé de $dureeChoisie jours.')
+                  : AppHelpers.showError(context, empruntCtrl.errorMessage ?? AppConstants.erreurInconnu);
+            }
+          },
+          onRetourner: () async {
+            final confirme = await AppHelpers.showConfirmDialog(
+              context: context,
+              titre: 'Retourner le livre',
+              message: 'Confirmez-vous le retour de ce livre ?',
+              confirmLabel: 'Retourner',
+              confirmColor: AppColors.success,
+            );
+            if (confirme != true) return;
+            final ok = await empruntCtrl.retournerLivre(
+              empruntId: emprunt.id,
+              livreId: emprunt.livreId,
+              membreId: auth.membre!.uid,
+            );
+            if (context.mounted) {
+              ok
+                  ? AppHelpers.showSuccess(context, 'Retour enregistré. Merci !')
+                  : AppHelpers.showError(context, empruntCtrl.errorMessage ?? AppConstants.erreurInconnu);
+            }
+          },
+        );
       },
     );
-  }
-}
-
-class _EmpruntActifCard extends StatelessWidget {
-  final Emprunt emprunt;
-
-  const _EmpruntActifCard({required this.emprunt});
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.read<AuthController>();
-    final empruntCtrl = context.read<EmpruntController>();
-    final color =
-        AppHelpers.couleurStatutEmprunt(emprunt.statut.name);
-    final joursRestants = emprunt.joursRestants;
-
-    String sousTitre;
-    if (emprunt.estEnRetard) {
-      sousTitre = 'En retard depuis le '
-          '${AppHelpers.formatDate(emprunt.dateRetourPrevue)}';
-    } else if (joursRestants >= 0) {
-      sousTitre = 'À rendre avant le '
-          '${AppHelpers.formatDate(emprunt.dateRetourPrevue)}';
-    } else {
-      sousTitre = 'À rendre très rapidement';
-    }
-
-    return Card(
-      color: AppColors.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSizes.paddingMedium),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 52,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.08),
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.borderRadiusSmall),
-                  ),
-                  child: const Icon(Icons.menu_book,
-                      color: AppColors.primary),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        emprunt.livreTitre,
-                        style: AppTextStyles.body.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        emprunt.livreAuteur,
-                        style: AppTextStyles.caption,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              _labelStatut(emprunt),
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            sousTitre,
-                            style: AppTextStyles.caption,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final confirme = await AppHelpers.showConfirmDialog(
-                        context: context,
-                        titre: 'Prolonger l\'emprunt',
-                        message:
-                            'Souhaitez-vous prolonger cet emprunt de 7 jours ?',
-                        confirmLabel: 'Prolonger',
-                      );
-                      if (confirme != true) return;
-
-                      final ok = await empruntCtrl.prolongerEmprunt(
-                        empruntId: emprunt.id,
-                        membreId: auth.membre!.uid,
-                      );
-                      if (context.mounted) {
-                        if (ok) {
-                          AppHelpers.showSuccess(
-                            context,
-                            'Emprunt prolongé avec succès.',
-                          );
-                        } else {
-                          AppHelpers.showError(
-                            context,
-                            empruntCtrl.errorMessage ??
-                                AppConstants.erreurInconnu,
-                          );
-                        }
-                      }
-                    },
-                    icon: const Icon(Icons.schedule),
-                    label: const Text('Prolonger'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      final confirme = await AppHelpers.showConfirmDialog(
-                        context: context,
-                        titre: 'Retourner le livre',
-                        message:
-                            'Confirmez-vous le retour de ce livre en bibliothèque ?',
-                        confirmLabel: 'Retourner',
-                        confirmColor: AppColors.success,
-                      );
-                      if (confirme != true) return;
-
-                      final ok = await empruntCtrl.retournerLivre(
-                        empruntId: emprunt.id,
-                        livreId: emprunt.livreId,
-                        membreId: auth.membre!.uid,
-                      );
-                      if (context.mounted) {
-                        if (ok) {
-                          AppHelpers.showSuccess(
-                            context,
-                            'Retour enregistré. Merci !',
-                          );
-                        } else {
-                          AppHelpers.showError(
-                            context,
-                            empruntCtrl.errorMessage ??
-                                AppConstants.erreurInconnu,
-                          );
-                        }
-                      }
-                    },
-                    icon: const Icon(Icons.undo),
-                    label: const Text('Retourner'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.success,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _labelStatut(Emprunt e) {
-    switch (e.statut) {
-      case StatutEmprunt.enCours:
-        return 'En cours';
-      case StatutEmprunt.retourne:
-        return 'Retourné';
-      case StatutEmprunt.enRetard:
-        return 'En retard';
-      case StatutEmprunt.prolonge:
-        return 'Prolongé';
-    }
   }
 }
 
@@ -359,11 +206,10 @@ class _HistoriqueTab extends StatelessWidget {
     }
 
     if (controller.historique.isEmpty) {
-      return _EmptyState(
+      return const EmptyStateWidget(
         icon: Icons.history,
         title: 'Aucun emprunt passé',
-        message:
-            'Vos anciens emprunts apparaîtront ici une fois les livres retournés.',
+        subtitle: 'Vos anciens emprunts apparaîtront ici une fois les livres retournés.',
       );
     }
 
@@ -373,24 +219,33 @@ class _HistoriqueTab extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final emprunt = controller.historique[index];
-        return ListTile(
-          tileColor: AppColors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSizes.borderRadiusSmall),
-          ),
-          leading: const Icon(Icons.menu_book_outlined,
-              color: AppColors.primary),
-          title: Text(
-            emprunt.livreTitre,
-            style: AppTextStyles.body.copyWith(
-              fontWeight: FontWeight.w600,
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: AppUI.cardDecoration(context),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            leading: const Icon(Icons.menu_book_outlined, color: AppColors.primary),
+            title: Text(emprunt.livreTitre,
+                style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              'Emprunté le ${AppHelpers.formatDate(emprunt.dateEmprunt)}\n'
+              'Retourné le ${AppHelpers.formatDate(emprunt.dateRetourEffective ?? emprunt.dateRetourPrevue)}',
+            ),
+            isThreeLine: true,
+            trailing: IconButton(
+              icon: const Icon(Icons.picture_as_pdf_rounded, color: AppColors.accent),
+              tooltip: 'Exporter en PDF',
+              onPressed: () {
+                final auth = context.read<AuthController>();
+                PdfService.genererRecuEmprunt(
+                  context: context,
+                  emprunt: emprunt,
+                  membreNom: auth.membre?.nomComplet ?? '',
+                  membreEmail: auth.membre?.email ?? '',
+                );
+              },
             ),
           ),
-          subtitle: Text(
-            'Emprunté le ${AppHelpers.formatDate(emprunt.dateEmprunt)}\n'
-            'Retourné le ${AppHelpers.formatDate(emprunt.dateRetourEffective ?? emprunt.dateRetourPrevue)}',
-          ),
-          isThreeLine: true,
         );
       },
     );
@@ -408,11 +263,10 @@ class _ReservationsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (controller.reservations.isEmpty &&
         !controller.isLoading) {
-      return _EmptyState(
+      return const EmptyStateWidget(
         icon: Icons.bookmark_add_outlined,
         title: 'Aucune réservation',
-        message:
-            'Réservez un livre déjà emprunté pour être notifié dès qu’il sera disponible.',
+        subtitle: 'Réservez un livre déjà emprunté pour être notifié dès qu’il sera disponible.',
       );
     }
 
@@ -485,22 +339,9 @@ class _ReservationCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _reservationColor(reservation)
-                        .withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _reservationLabel(reservation),
-                    style: TextStyle(
-                      color: _reservationColor(reservation),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                StatusBadge(
+                  label: _reservationLabel(reservation),
+                  color: _reservationColor(reservation),
                 ),
                 if (isActive)
                   TextButton(
@@ -574,43 +415,78 @@ class _ReservationCard extends StatelessWidget {
   }
 }
 
-// ─── Widget d'état vide réutilisable ──────────────────────────────────────────
+// ─── Dialog durée de prolongation ────────────────────────────────────────────
+class _DureeProlongationDialog extends StatefulWidget {
+  final int dureeDefaut;
+  const _DureeProlongationDialog({required this.dureeDefaut});
 
-class _EmptyState extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String message;
+  @override
+  State<_DureeProlongationDialog> createState() => _DureeProlongationDialogState();
+}
 
-  const _EmptyState({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
+class _DureeProlongationDialogState extends State<_DureeProlongationDialog> {
+  late int _duree;
+
+  @override
+  void initState() {
+    super.initState();
+    _duree = widget.dureeDefaut;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSizes.paddingLarge),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 56, color: AppColors.primary),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.headline2,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.caption,
-            ),
-          ],
-        ),
+    return AlertDialog(
+      title: const Text('Prolonger l\'emprunt'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('De combien de jours souhaitez-vous prolonger ?',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: _duree > 1 ? () => setState(() => _duree--) : null,
+                icon: const Icon(Icons.remove_circle_outline),
+                color: AppColors.primary,
+              ),
+              Container(
+                width: 70,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('$_duree j', textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primary)),
+              ),
+              IconButton(
+                onPressed: _duree < 30 ? () => setState(() => _duree++) : null,
+                icon: const Icon(Icons.add_circle_outline),
+                color: AppColors.primary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [3, 7, 14, 21].map((d) => ActionChip(
+              label: Text('$d j'),
+              onPressed: () => setState(() => _duree = d),
+              backgroundColor: _duree == d ? AppColors.primary : null,
+              labelStyle: TextStyle(color: _duree == d ? Colors.white : null, fontSize: 12),
+            )).toList(),
+          ),
+        ],
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, _duree),
+          child: const Text('Prolonger'),
+        ),
+      ],
     );
   }
 }

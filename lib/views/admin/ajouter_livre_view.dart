@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
-import '../../controllers/auth_controller.dart';
 import '../../controllers/livre_controller.dart';
 import '../../models/livre.dart';
+import '../../services/isbn_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
+import '../../utils/isbn_scan_helper.dart';
 import '../../utils/validators.dart';
+import '../../widgets/app_buttons.dart';
 import '../../widgets/custom_appbar.dart';
 
 /// Formulaire d'ajout / modification d'un livre (Admin)
@@ -26,11 +29,12 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
   late final TextEditingController _isbnCtrl;
   late final TextEditingController _resumeCtrl;
   late final TextEditingController _editeurCtrl;
-  late final TextEditingController _anneeCtrl;
   late final TextEditingController _couvertureCtrl;
   late final TextEditingController _tagsCtrl;
   String _genreSelectionne = '';
   StatutLivre _statut = StatutLivre.disponible;
+  int _anneeSelectionnee = DateTime.now().year;
+  bool _chargementIsbn = false;
 
   bool get _estModification => widget.livre != null;
 
@@ -43,13 +47,11 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
     _isbnCtrl = TextEditingController(text: l?.isbn ?? '');
     _resumeCtrl = TextEditingController(text: l?.resume ?? '');
     _editeurCtrl = TextEditingController(text: l?.editeur ?? '');
-    _anneeCtrl = TextEditingController(
-        text: l != null && l.anneePublication > 0
-            ? '${l.anneePublication}'
-            : '');
+    _anneeSelectionnee = (l != null && l.anneePublication > 0)
+        ? l.anneePublication
+        : DateTime.now().year;
     _couvertureCtrl = TextEditingController(text: l?.couvertureUrl ?? '');
-    _tagsCtrl = TextEditingController(
-        text: l?.tags.join(', ') ?? '');
+    _tagsCtrl = TextEditingController(text: l?.tags.join(', ') ?? '');
     _genreSelectionne = l?.genre ?? '';
     _statut = l?.statut ?? StatutLivre.disponible;
   }
@@ -61,11 +63,50 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
     _isbnCtrl.dispose();
     _resumeCtrl.dispose();
     _editeurCtrl.dispose();
-    _anneeCtrl.dispose();
     _couvertureCtrl.dispose();
     _tagsCtrl.dispose();
     super.dispose();
   }
+
+  /// Ouvre le scanner de code-barres et remplit automatiquement les champs
+  Future<void> _scannerIsbn() async {
+    final isbn = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const _IsbnScannerView()),
+    );
+    if (isbn == null || isbn.isEmpty) return;
+
+    setState(() {
+      _isbnCtrl.text = isbn;
+      _chargementIsbn = true;
+    });
+
+    AppHelpers.showInfo(context, 'Recherche des informations du livre...');
+
+    final info = await IsbnService.rechercherParIsbn(isbn);
+
+    if (!mounted) return;
+    setState(() => _chargementIsbn = false);
+
+    if (info == null) {
+      AppHelpers.showError(context, 'Aucune information trouvée pour cet ISBN. Remplissez manuellement.');
+      return;
+    }
+
+    // Remplissage automatique
+    setState(() {
+      if (info.titre.isNotEmpty) _titreCtrl.text = info.titre;
+      if (info.auteur.isNotEmpty) _auteurCtrl.text = info.auteur;
+      if (info.editeur.isNotEmpty) _editeurCtrl.text = info.editeur;
+      if (info.annee > 0) _anneeSelectionnee = info.annee;
+      if (info.couvertureUrl.isNotEmpty) _couvertureCtrl.text = info.couvertureUrl;
+      if (info.resume.isNotEmpty) _resumeCtrl.text = info.resume;
+    });
+
+    AppHelpers.showSuccess(context, 'Informations récupérées automatiquement !');
+  }
+
+
 
   Future<void> _sauvegarder() async {
     if (!_formKey.currentState!.validate()) return;
@@ -86,8 +127,7 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
       'genre': _genreSelectionne,
       'resume': _resumeCtrl.text.trim(),
       'editeur': _editeurCtrl.text.trim(),
-      'anneePublication':
-          int.tryParse(_anneeCtrl.text.trim()) ?? 0,
+      'anneePublication': _anneeSelectionnee,
       'couvertureUrl': _couvertureCtrl.text.trim(),
       'tags': tags,
       'statut': _statut.name,
@@ -105,7 +145,7 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
         genre: data['genre'] as String,
         resume: data['resume'] as String,
         editeur: data['editeur'] as String,
-        anneePublication: data['anneePublication'] as int,
+        anneePublication: _anneeSelectionnee,
         couvertureUrl: data['couvertureUrl'] as String,
         tags: data['tags'] as List<String>,
         statut: _statut,
@@ -188,9 +228,9 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
                 controller: _titreCtrl,
                 validator: (v) =>
                     AppValidators.required(v, label: 'Le titre'),
-                decoration: const InputDecoration(
-                  labelText: 'Titre *',
-                  prefixIcon: Icon(Icons.title),
+                decoration: AppInputDecoration.standard(
+                  label: 'Titre *',
+                  icon: Icons.title,
                 ),
               ),
               const SizedBox(height: 12),
@@ -199,9 +239,9 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
                 controller: _auteurCtrl,
                 validator: (v) =>
                     AppValidators.required(v, label: 'L\'auteur'),
-                decoration: const InputDecoration(
-                  labelText: 'Auteur *',
-                  prefixIcon: Icon(Icons.person_outlined),
+                decoration: AppInputDecoration.standard(
+                  label: 'Auteur *',
+                  icon: Icons.person_outlined,
                 ),
               ),
               const SizedBox(height: 12),
@@ -213,22 +253,41 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
                       controller: _isbnCtrl,
                       validator: AppValidators.isbn,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'ISBN',
-                        prefixIcon: Icon(Icons.qr_code),
+                      decoration: AppInputDecoration.standard(
+                        label: 'ISBN',
+                        icon: Icons.tag,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  // Bouton scan ISBN avec remplissage automatique
+                  _chargementIsbn
+                      ? const SizedBox(
+                          width: 44, height: 44,
+                          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      : IconButton(
+                          onPressed: _scannerIsbn,
+                          icon: const Icon(Icons.qr_code_scanner_rounded),
+                          tooltip: 'Scanner ISBN (remplissage auto)',
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                            foregroundColor: AppColors.primary,
+                          ),
+                        ),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: TextFormField(
-                      controller: _anneeCtrl,
-                      validator: AppValidators.annee,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Année',
-                        prefixIcon: Icon(Icons.calendar_today),
+                    child: DropdownButtonFormField<int>(
+                      value: _anneeSelectionnee,
+                      decoration: AppInputDecoration.standard(
+                        label: 'Année',
+                        icon: Icons.calendar_today,
                       ),
+                      items: List.generate(
+                        DateTime.now().year - 1799,
+                        (i) => DateTime.now().year - i,
+                      ).map((a) => DropdownMenuItem(value: a, child: Text('$a'))).toList(),
+                      onChanged: (v) => setState(() => _anneeSelectionnee = v ?? DateTime.now().year),
                     ),
                   ),
                 ],
@@ -237,9 +296,9 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
 
               TextFormField(
                 controller: _editeurCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Éditeur',
-                  prefixIcon: Icon(Icons.business),
+                decoration: AppInputDecoration.standard(
+                  label: 'Éditeur',
+                  icon: Icons.business,
                 ),
               ),
               const SizedBox(height: 24),
@@ -273,7 +332,10 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
               TextFormField(
                 controller: _resumeCtrl,
                 maxLines: 4,
-                decoration: const InputDecoration(
+                decoration: AppInputDecoration.standard(
+                  label: 'Résumé',
+                  icon: Icons.subject_rounded,
+                ).copyWith(
                   hintText: 'Description du livre...',
                   alignLabelWithHint: true,
                 ),
@@ -286,9 +348,10 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
               TextFormField(
                 controller: _couvertureCtrl,
                 keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
-                  labelText: 'URL de la couverture',
-                  prefixIcon: Icon(Icons.image_outlined),
+                decoration: AppInputDecoration.standard(
+                  label: 'URL de la couverture',
+                  icon: Icons.image_outlined,
+                ).copyWith(
                   hintText: 'https://...',
                 ),
               ),
@@ -313,10 +376,10 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _tagsCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'Ex: aventure, famille, humour',
-                  prefixIcon: Icon(Icons.label_outline),
-                ),
+                decoration: AppInputDecoration.standard(
+                  label: 'Tags',
+                  icon: Icons.label_outline,
+                ).copyWith(hintText: 'Ex: aventure, famille, humour'),
               ),
               const SizedBox(height: 24),
 
@@ -325,8 +388,9 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
               const SizedBox(height: 8),
               DropdownButtonFormField<StatutLivre>(
                 value: _statut,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.info_outline),
+                decoration: AppInputDecoration.standard(
+                  label: 'Statut',
+                  icon: Icons.info_outline,
                 ),
                 items: StatutLivre.values.map((s) {
                   final labels = {
@@ -348,15 +412,12 @@ class _AjouterLivreViewState extends State<AjouterLivreView> {
               // ── Bouton ──
               livreCtrl.isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton.icon(
+                  : AppPrimaryButton(
+                    label: _estModification
+                      ? 'Sauvegarder les modifications'
+                      : 'Ajouter au catalogue',
+                    icon: _estModification ? Icons.save : Icons.add,
                       onPressed: _sauvegarder,
-                      icon: Icon(
-                          _estModification ? Icons.save : Icons.add),
-                      label: Text(
-                        _estModification
-                            ? 'Sauvegarder les modifications'
-                            : 'Ajouter au catalogue',
-                      ),
                     ),
               const SizedBox(height: 32),
             ],
@@ -396,3 +457,97 @@ class _SectionLabel extends StatelessWidget {
     );
   }
 }
+
+/// Vue scanner ISBN avec caméra
+class _IsbnScannerView extends StatefulWidget {
+  const _IsbnScannerView();
+  @override
+  State<_IsbnScannerView> createState() => _IsbnScannerViewState();
+}
+
+class _IsbnScannerViewState extends State<_IsbnScannerView> {
+  late final MobileScannerController _ctrl = MobileScannerController(
+    formats: kFormatsScanLivre,
+    detectionSpeed: DetectionSpeed.unrestricted,
+    facing: CameraFacing.back,
+  );
+  bool _scanned = false;
+
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  void _traiterCapture(BarcodeCapture capture) {
+    if (_scanned) return;
+    for (final b in capture.barcodes) {
+      final raw = b.rawValue;
+      if (raw == null || raw.isEmpty) continue;
+      final isbn = IsbnScanHelper.extraireIsbn(raw);
+      if (isbn != null) {
+        _scanned = true;
+        Navigator.pop(context, isbn);
+        return;
+      }
+    }
+    if (capture.barcodes.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucun ISBN détecté. Essayez le code-barres EAN-13 ou un QR contenant l’ISBN.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text('Scanner ISBN'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.flash_on_rounded),
+            onPressed: () => _ctrl.toggleTorch(),
+          ),
+        ],
+      ),
+      body: Stack(children: [
+        MobileScanner(
+          controller: _ctrl,
+          onDetect: _traiterCapture,
+        ),
+        // Viseur
+        Center(
+          child: Container(
+            width: 280, height: 120,
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.accentLight, width: 3),
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 40, left: 0, right: 0,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Text(
+              'Code-barres EAN-13 ou QR (URL Open Library, etc.) — tenez le téléphone stable',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+
+/// Vue scanner ISBN avec caméra

@@ -1,93 +1,86 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../controllers/auth_controller.dart';
 import '../models/livre.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
+import 'status_badge.dart';
 
-/// Carte d'un livre pour la liste du catalogue
 class LivreCard extends StatelessWidget {
   final Livre livre;
   final VoidCallback? onTap;
   final bool showStatut;
 
-  const LivreCard({
-    super.key,
-    required this.livre,
-    this.onTap,
-    this.showStatut = true,
-  });
+  const LivreCard({super.key, required this.livre, this.onTap, this.showStatut = true});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: AppSizes.livreCardWidth,
-        margin: const EdgeInsets.only(right: AppSizes.paddingSmall),
+        decoration: AppUI.cardDecoration(context),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Couverture ──
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.borderRadiusSmall),
-                  child: livre.couvertureUrl.isNotEmpty
-                      ? Image.network(
-                          livre.couvertureUrl,
-                          height: AppSizes.couvertureHeight,
-                          width: AppSizes.livreCardWidth,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _placeholder(),
-                        )
-                      : _placeholder(),
-                ),
-                if (showStatut)
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: _StatutBadge(statut: livre.statut),
+            Stack(children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: livre.couvertureUrl.isNotEmpty
+                    ? Image.network(livre.couvertureUrl,
+                        height: AppSizes.couvertureHeight, width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _placeholder())
+                    : _placeholder(),
+              ),
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Consumer<AuthController>(builder: (ctx, auth, _) {
+                  if (!auth.isAuthenticated) return const SizedBox();
+                  final inWl = auth.membre!.wishlist.contains(livre.id);
+                  return GestureDetector(
+                    onTap: () => auth.toggleWishlist(livre.id),
+                    child: Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.95),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        inWl ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        size: 14,
+                        color: inWl ? AppColors.accentDark : AppColors.textSecondary,
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              if (showStatut)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: StatusBadge(
+                    label: livre.statutLabel,
+                    color: _statusColor(livre.statut.name),
                   ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            // ── Titre ──
-            Text(
-              livre.titre,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: AppColors.textPrimary,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            // ── Auteur ──
-            Text(
-              livre.auteur,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            // ── Note ──
+                ),
+            ]),
+            const SizedBox(height: 10),
+            Text(livre.titre,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            Text(livre.auteur,
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
             if (livre.nbAvis > 0) ...[
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.star, size: 12, color: AppColors.accent),
-                  const SizedBox(width: 2),
-                  Text(
-                    livre.noteMoyenne.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
+              Row(children: [
+                const Icon(Icons.star_rounded, size: 13, color: AppColors.accent),
+                const SizedBox(width: 3),
+                Text(livre.noteMoyenne.toStringAsFixed(1),
+                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ]),
             ],
           ],
         ),
@@ -95,158 +88,83 @@ class LivreCard extends StatelessWidget {
     );
   }
 
-  Widget _placeholder() {
-    return Container(
-      height: AppSizes.couvertureHeight,
-      width: AppSizes.livreCardWidth,
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(AppSizes.borderRadiusSmall),
-      ),
-      child: const Icon(
-        Icons.menu_book,
-        size: 48,
-        color: AppColors.primary,
-      ),
-    );
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'disponible':
+        return AppColors.success;
+      case 'emprunte':
+        return AppColors.primary;
+      case 'reserve':
+        return AppColors.accent;
+      default:
+        return AppColors.textSecondary;
+    }
   }
+
+  Widget _placeholder() => Container(
+    height: AppSizes.couvertureHeight, width: double.infinity,
+    decoration: BoxDecoration(
+      color: AppColors.primarySoft,
+      borderRadius: BorderRadius.circular(AppSizes.radius),
+    ),
+    child: const Icon(Icons.menu_book_rounded, size: 40, color: AppColors.primary),
+  );
 }
 
-/// Badge de statut du livre
-class _StatutBadge extends StatelessWidget {
-  final StatutLivre statut;
-
-  const _StatutBadge({required this.statut});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = AppHelpers.couleurStatutLivre(statut.name);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        statut == StatutLivre.disponible ? '✓' : '✗',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Version liste (horizontale complète) ─────────────────────────────────────
 class LivreListTile extends StatelessWidget {
   final Livre livre;
   final VoidCallback? onTap;
-
   const LivreListTile({super.key, required this.livre, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final statutColor = AppHelpers.couleurStatutLivre(livre.statut.name);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(
-        horizontal: AppSizes.paddingMedium,
-        vertical: AppSizes.paddingSmall / 2,
-      ),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      decoration: AppUI.cardDecoration(context),
       child: ListTile(
         onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         leading: ClipRRect(
-          borderRadius: BorderRadius.circular(AppSizes.borderRadiusSmall),
+          borderRadius: BorderRadius.circular(8),
           child: livre.couvertureUrl.isNotEmpty
-              ? Image.network(
-                  livre.couvertureUrl,
-                  width: 50,
-                  height: 70,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _miniPlaceholder(),
-                )
-              : _miniPlaceholder(),
+              ? Image.network(livre.couvertureUrl, width: 44, height: 60, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _mini())
+              : _mini(),
         ),
-        title: Text(
-          livre.titre,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              livre.auteur,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                if (livre.genre.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      livre.genre,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statutColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    livre.statutLabel,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: statutColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+        title: Text(livre.titre,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(livre.auteur,
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 5),
+          Row(children: [
+            if (livre.genre.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ],
-            ),
-          ],
-        ),
-        trailing: const Icon(
-          Icons.chevron_right,
-          color: AppColors.textSecondary,
-        ),
+                child: Text(livre.genre,
+                    style: const TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 6),
+            ],
+            StatusBadge(label: livre.statutLabel, color: statutColor),
+          ]),
+        ]),
+        trailing: Icon(Icons.chevron_right_rounded,
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
         isThreeLine: true,
       ),
     );
   }
 
-  Widget _miniPlaceholder() {
-    return Container(
-      width: 50,
-      height: 70,
-      color: AppColors.primary.withOpacity(0.1),
-      child: const Icon(Icons.menu_book, size: 24, color: AppColors.primary),
-    );
-  }
+  Widget _mini() => Container(
+    width: 44, height: 60,
+    color: AppColors.primarySoft,
+    child: const Icon(Icons.menu_book_rounded, size: 22, color: AppColors.primary),
+  );
 }

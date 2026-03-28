@@ -17,8 +17,20 @@ class AppValidators {
     if (value == null || value.isEmpty) {
       return 'Le mot de passe est obligatoire';
     }
-    if (value.length < 6) {
-      return 'Minimum 6 caractères';
+    if (value.length < 8) {
+      return 'Minimum 8 caractères requis';
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+      return 'Au moins une lettre majuscule requise';
+    }
+    if (!RegExp(r'[a-z]').hasMatch(value)) {
+      return 'Au moins une lettre minuscule requise';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(value)) {
+      return 'Au moins un chiffre requis';
+    }
+    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(value)) {
+      return 'Au moins un caractère spécial requis (!@#\$%...)';
     }
     return null;
   }
@@ -99,5 +111,28 @@ class AppValidators {
       return 'Année entre 1000 et $now';
     }
     return null;
+  }
+}// lib/utils/validators.dart - UPDATED v2
+// Added ISBN-13 checksum validation and phone validation
+
+class IsbnValidator {
+  static bool validateIsbn13Checksum(String isbn) {
+    if (isbn.length != 13) return false;
+    int sum = 0;
+    for (int i = 0; i < 12; i++) {
+      int digit = int.parse(isbn[i]);
+      sum += (i % 2 == 0) ? digit : digit * 3;
+    }
+    int checkDigit = (10 - (sum % 10)) % 10;
+    return checkDigit == int.parse(isbn[12]);
+  }
+
+  static bool validateIsbn10(String isbn) {
+    if (isbn.length != 10) return false;
+    int sum = 0;
+    for (int i = 0; i < 9; i++) {
+      sum += (i + 1) * int.parse(isbn[i]);
+    }
+    return sum % 11 == int.parse(isbn[9]);
   }
 }

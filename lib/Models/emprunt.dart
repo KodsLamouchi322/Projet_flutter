@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum StatutEmprunt { enCours, retourne, enRetard, prolonge }
+enum StatutEmprunt { enCours, retourne, enRetard, prolonge, enAttenteRetour }
 
 class Emprunt {
   final String id;
@@ -16,6 +16,7 @@ class Emprunt {
   final StatutEmprunt statut;
   final int prolongations;
   final String? notes;
+  final bool prolongationAutorisee; // Admin doit autoriser avant que le membre puisse prolonger
 
   Emprunt({
     required this.id,
@@ -31,6 +32,7 @@ class Emprunt {
     this.statut = StatutEmprunt.enCours,
     this.prolongations = 0,
     this.notes,
+    this.prolongationAutorisee = false,
   });
 
   bool get estEnRetard =>
@@ -60,6 +62,7 @@ class Emprunt {
       ),
       prolongations: data['prolongations'] ?? 0,
       notes: data['notes'],
+      prolongationAutorisee: data['prolongationAutorisee'] ?? false,
     );
   }
 
@@ -79,6 +82,41 @@ class Emprunt {
       'statut': statut.name,
       'prolongations': prolongations,
       'notes': notes,
+      'prolongationAutorisee': prolongationAutorisee,
     };
+  }
+
+  Emprunt copyWith({
+    String? id,
+    String? membreId,
+    String? membreNom,
+    String? livreId,
+    String? livreTitre,
+    String? livreAuteur,
+    String? livreCouverture,
+    DateTime? dateEmprunt,
+    DateTime? dateRetourPrevue,
+    DateTime? dateRetourEffective,
+    StatutEmprunt? statut,
+    int? prolongations,
+    String? notes,
+    bool? prolongationAutorisee,
+  }) {
+    return Emprunt(
+      id: id ?? this.id,
+      membreId: membreId ?? this.membreId,
+      membreNom: membreNom ?? this.membreNom,
+      livreId: livreId ?? this.livreId,
+      livreTitre: livreTitre ?? this.livreTitre,
+      livreAuteur: livreAuteur ?? this.livreAuteur,
+      livreCouverture: livreCouverture ?? this.livreCouverture,
+      dateEmprunt: dateEmprunt ?? this.dateEmprunt,
+      dateRetourPrevue: dateRetourPrevue ?? this.dateRetourPrevue,
+      dateRetourEffective: dateRetourEffective ?? this.dateRetourEffective,
+      statut: statut ?? this.statut,
+      prolongations: prolongations ?? this.prolongations,
+      notes: notes ?? this.notes,
+      prolongationAutorisee: prolongationAutorisee ?? this.prolongationAutorisee,
+    );
   }
 }

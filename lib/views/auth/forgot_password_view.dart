@@ -4,6 +4,7 @@ import '../../controllers/auth_controller.dart';
 import '../../utils/constants.dart';
 import '../../utils/validators.dart';
 import '../../utils/helpers.dart';
+import '../../widgets/app_buttons.dart';
 import '../../widgets/custom_appbar.dart';
 
 /// Écran de réinitialisation de mot de passe
@@ -95,24 +96,25 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
             controller: _emailCtrl,
             keyboardType: TextInputType.emailAddress,
             validator: AppValidators.email,
-            decoration: const InputDecoration(
-              labelText: 'Adresse email',
-              prefixIcon: Icon(Icons.email_outlined),
+            decoration: AppInputDecoration.standard(
+              label: 'Adresse email',
+              icon: Icons.email_outlined,
             ),
           ),
           const SizedBox(height: 24),
 
           auth.isLoading
               ? const CircularProgressIndicator()
-              : ElevatedButton.icon(
+              : AppPrimaryButton(
+                  label: 'Envoyer le lien',
+                  icon: Icons.send,
                   onPressed: _envoyer,
-                  icon: const Icon(Icons.send),
-                  label: const Text('Envoyer le lien'),
                 ),
           const SizedBox(height: 16),
-          TextButton(
+          AppSecondaryButton(
+            label: 'Retour à la connexion',
+            icon: Icons.arrow_back_rounded,
             onPressed: () => Navigator.pop(context),
-            child: const Text('Retour à la connexion'),
           ),
         ],
       ),
@@ -161,10 +163,10 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
           style: TextStyle(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 40),
-        ElevatedButton.icon(
+        AppPrimaryButton(
+          label: 'Retour à la connexion',
+          icon: Icons.login,
           onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.login),
-          label: const Text('Retour à la connexion'),
         ),
       ],
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/evenement.dart';
+import '../services/local_notification_service.dart';
 import '../utils/constants.dart';
 
 /// Controller pour la gestion des événements culturels
@@ -67,13 +68,15 @@ class EvenementController extends ChangeNotifier {
   // ─── Charger mes événements (inscriptions) ────────────────────────────────
   Future<void> chargerMesEvenements(String membreId) async {
     try {
+      // Sans orderBy pour éviter l'index composite — tri en mémoire
       final snapshot = await _db
           .collection(AppConstants.colEvenements)
           .where('participantsIds', arrayContains: membreId)
-          .orderBy('dateDebut')
           .get();
-      _mesEvenements =
-          snapshot.docs.map((d) => Evenement.fromFirestore(d)).toList();
+      _mesEvenements = snapshot.docs
+          .map((d) => Evenement.fromFirestore(d))
+          .toList()
+        ..sort((a, b) => a.dateDebut.compareTo(b.dateDebut));
       notifyListeners();
     } catch (e) {
       _errorMessage = e.toString();
@@ -104,6 +107,14 @@ class EvenementController extends ChangeNotifier {
       });
 
       await chargerEvenements();
+      // Planifier rappels locaux 24h et 1h avant
+      final ev = _evenements.firstWhere((e) => e.id == evenementId,
+          orElse: () => _evenements.isNotEmpty ? _evenements.first : throw Exception(''));
+      LocalNotificationService().planifierRappelEvenement(
+        evenementId: evenementId,
+        titre: ev.titre,
+        dateDebut: ev.dateDebut,
+      );
       return true;
     } catch (e) {
       _errorMessage = e.toString();
@@ -129,6 +140,7 @@ class EvenementController extends ChangeNotifier {
       });
 
       await chargerEvenements();
+      LocalNotificationService().annulerRappelEvenement(evenementId);
       return true;
     } catch (e) {
       _errorMessage = e.toString();
@@ -193,6 +205,44 @@ class EvenementController extends ChangeNotifier {
   void selectionnerEvenement(Evenement? evenement) {
     _evenementSelectionne = evenement;
     notifyListeners();
+  }
+
+  // ─── Publier un compte-rendu (admin) ──────────────────────────────────────
+  Future<bool> publierCompteRendu({
+    required String evenementId,
+    required String compteRendu,
+    List<String> photosUrls = const [],
+  }) async {
+    try {
+      await _db.collection(AppConstants.colEvenements).doc(evenementId).update({
+        'compteRendu': compteRendu,
+        'photosCompteRendu': photosUrls,
+      });
+      await chargerTousEvenements();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ─── Ajouter une photo à l'événement ─────────────────────────────────────
+  Future<bool> ajouterPhoto({
+    required String evenementId,
+    required String photoUrl,
+  }) async {
+    try {
+      await _db.collection(AppConstants.colEvenements).doc(evenementId).update({
+        'photosUrls': FieldValue.arrayUnion([photoUrl]),
+      });
+      await chargerTousEvenements();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 
   void clearError() {

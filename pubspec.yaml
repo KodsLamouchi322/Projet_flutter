@@ -22,10 +22,50 @@ dependencies:
 
   # UI
   cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
 
   # Utils
-  intl: ^0.18.1
+  intl: ^0.20.0
   image_picker: ^1.0.5
+  flutter_rating_bar: ^4.0.1
+
+  # Scanner de code-barres ISBN (mobile uniquement)
+  mobile_scanner: ^5.1.1
+
+  # Notifications locales (rappels emprunts / événements)
+  flutter_local_notifications: ^17.2.2
+  timezone: ^0.9.4
+
+  # Cache hors-ligne
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Export PDF
+  pdf: ^3.10.8
+  printing: ^5.13.4
+  path_provider: ^2.1.2
+  share_plus: ^10.1.2
+  file_picker: ^8.1.2
+
+
+  # HTTP pour Open Library API (infos livre par ISBN)
+  http: ^1.2.0
+
+  # Préférences (langue)
+  shared_preferences: ^2.3.3
+
+  # Fuseau horaire pour rappels locaux
+  flutter_timezone: ^3.0.1
+
+  # Permission notifications Android 13+
+  permission_handler: ^11.3.1
+
+  # Auth providers
+  google_sign_in: ^6.2.1
+
+  # Localizations (inclus dans Flutter SDK)
+  flutter_localizations:
+    sdk: flutter
 
 
 dev_dependencies:
@@ -34,6 +74,7 @@ dev_dependencies:
   flutter_lints: ^3.0.0
 
 flutter:
+  generate: true
   uses-material-design: true
-  # assets:
-  #   - assets/images/
+  assets:
+    - assets/images/

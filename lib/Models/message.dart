@@ -68,6 +68,34 @@ class Message {
       'imageUrl': imageUrl,
     };
   }
+
+  Message copyWith({
+    String? id,
+    String? expediteurId,
+    String? expediteurNom,
+    String? destinataireId,
+    String? conversationId,
+    String? forumGenre,
+    String? contenu,
+    TypeMessage? type,
+    DateTime? createdAt,
+    bool? estLu,
+    String? imageUrl,
+  }) {
+    return Message(
+      id: id ?? this.id,
+      expediteurId: expediteurId ?? this.expediteurId,
+      expediteurNom: expediteurNom ?? this.expediteurNom,
+      destinataireId: destinataireId ?? this.destinataireId,
+      conversationId: conversationId ?? this.conversationId,
+      forumGenre: forumGenre ?? this.forumGenre,
+      contenu: contenu ?? this.contenu,
+      type: type ?? this.type,
+      createdAt: createdAt ?? this.createdAt,
+      estLu: estLu ?? this.estLu,
+      imageUrl: imageUrl ?? this.imageUrl,
+    );
+  }
 }
 
 /// Conversation entre deux membres
@@ -77,7 +105,8 @@ class Conversation {
   final Map<String, String> participantsNoms;
   final String? dernierMessage;
   final DateTime? dernierMessageAt;
-  final int messageNonLus;
+  final String? dernierMessageExpId; // ID de l'expéditeur du dernier message
+  final Map<String, int> messageNonLusParMembre; // Non lus par participant
 
   Conversation({
     required this.id,
@@ -85,7 +114,8 @@ class Conversation {
     required this.participantsNoms,
     this.dernierMessage,
     this.dernierMessageAt,
-    required this.messageNonLus,
+    this.dernierMessageExpId,
+    required this.messageNonLusParMembre,
   });
 
   String getNomAutre(String monUid) {
@@ -96,8 +126,25 @@ class Conversation {
     return participantsNoms[autreId] ?? 'Inconnu';
   }
 
+  int getMessageNonLus(String membreId) {
+    return messageNonLusParMembre[membreId] ?? 0;
+  }
+
   factory Conversation.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    
+    // Migration: si ancien format (messageNonLus simple), convertir en Map
+    Map<String, int> nonLusMap = {};
+    if (data['messageNonLusParMembre'] != null) {
+      nonLusMap = Map<String, int>.from(data['messageNonLusParMembre']);
+    } else if (data['messageNonLus'] != null) {
+      // Ancien format: attribuer tous les non-lus au premier participant
+      final participants = List<String>.from(data['participantsIds'] ?? []);
+      if (participants.isNotEmpty) {
+        nonLusMap[participants[0]] = data['messageNonLus'] as int;
+      }
+    }
+    
     return Conversation(
       id: doc.id,
       participantsIds: List<String>.from(data['participantsIds'] ?? []),
@@ -106,7 +153,8 @@ class Conversation {
       dernierMessageAt: data['dernierMessageAt'] != null
           ? (data['dernierMessageAt'] as Timestamp).toDate()
           : null,
-      messageNonLus: data['messageNonLus'] ?? 0,
+      dernierMessageExpId: data['dernierMessageExpId'],
+      messageNonLusParMembre: nonLusMap,
     );
   }
 
@@ -118,7 +166,28 @@ class Conversation {
       'dernierMessageAt': dernierMessageAt != null
           ? Timestamp.fromDate(dernierMessageAt!)
           : null,
-      'messageNonLus': messageNonLus,
+      'dernierMessageExpId': dernierMessageExpId,
+      'messageNonLusParMembre': messageNonLusParMembre,
     };
+  }
+
+  Conversation copyWith({
+    String? id,
+    List<String>? participantsIds,
+    Map<String, String>? participantsNoms,
+    String? dernierMessage,
+    DateTime? dernierMessageAt,
+    String? dernierMessageExpId,
+    Map<String, int>? messageNonLusParMembre,
+  }) {
+    return Conversation(
+      id: id ?? this.id,
+      participantsIds: participantsIds ?? this.participantsIds,
+      participantsNoms: participantsNoms ?? this.participantsNoms,
+      dernierMessage: dernierMessage ?? this.dernierMessage,
+      dernierMessageAt: dernierMessageAt ?? this.dernierMessageAt,
+      dernierMessageExpId: dernierMessageExpId ?? this.dernierMessageExpId,
+      messageNonLusParMembre: messageNonLusParMembre ?? this.messageNonLusParMembre,
+    );
   }
 }

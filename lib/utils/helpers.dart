@@ -27,11 +27,9 @@ class AppHelpers {
   }
 
   // ─── Calcul date retour ───────────────────────────────────────────────────
-  static DateTime calculerDateRetour({DateTime? dateDebut}) {
+  static DateTime calculerDateRetour({DateTime? dateDebut, int dureeJours = AppConstants.dureeEmpruntJours}) {
     final debut = dateDebut ?? DateTime.now();
-    return debut.add(
-      const Duration(days: AppConstants.dureeEmpruntJours),
-    );
+    return debut.add(Duration(days: dureeJours));
   }
 
   // ─── Couleurs statut ─────────────────────────────────────────────────────
@@ -176,7 +174,18 @@ class AppHelpers {
         return 'Erreur réseau. Vérifiez votre connexion.';
       case 'invalid-credential':
         return 'Email ou mot de passe incorrect.';
+      case 'sign_in_failed':
+      case 'sign_in_canceled':
+        return 'Connexion Google annulée.';
+      case 'account-exists-with-different-credential':
+        return 'Un compte existe déjà avec cet email via une autre méthode.';
       default:
+        if (code.contains('network') || code.contains('Network')) {
+          return AppConstants.erreurReseau;
+        }
+        if (code.contains('cancelled') || code.contains('canceled')) {
+          return 'Connexion annulée.';
+        }
         return AppConstants.erreurInconnu;
     }
   }

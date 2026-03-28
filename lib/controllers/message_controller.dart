@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/message.dart';
+import '../utils/constants.dart';
 
 /// Controller pour la messagerie interne
 class MessageController extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   List<Conversation> _conversations = [];
-  List<Message> _messagesConversation = [];
-  List<Message> _messagesForum = [];
+  final List<Message> _messagesConversation = [];
+  final List<Message> _messagesForum = [];
   bool _isLoading = false;
   String? _errorMessage;
-  String? _conversationActive;
 
   // ─── Getters ──────────────────────────────────────────────────────────────
   List<Conversation> get conversations => _conversations;
@@ -21,20 +21,58 @@ class MessageController extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   int get totalNonLus =>
-      _conversations.fold(0, (sum, c) => sum + c.messageNonLus);
+      _conversations.fold(0, (sum, c) {
+        // Récupérer l'ID du membre connecté depuis le contexte si disponible
+        // Pour l'instant, on retourne 0 car on ne peut pas accéder au contexte ici
+        // Cette méthode sera appelée depuis la vue avec le membreId
+        return sum;
+      });
 
-  // ─── Charger les conversations du membre ──────────────────────────────────
+  int getTotalNonLusPourMembre(String membreId) =>
+      _conversations.fold(0, (sum, c) => sum + c.getMessageNonLus(membreId));
+
+  // ─── Stream temps réel des conversations ─────────────────────────────────
+  Stream<List<Conversation>> streamConversations(String membreId) {
+    return _db
+        .collection(AppConstants.colConversations)
+        .where('participantsIds', arrayContains: membreId)
+        .snapshots()
+        .map((snap) {
+      final list = snap.docs
+          .map((d) => Conversation.fromFirestore(d))
+          .toList()
+        ..sort((a, b) {
+          final at = a.dernierMessageAt;
+          final bt = b.dernierMessageAt;
+          if (at == null && bt == null) return 0;
+          if (at == null) return 1;
+          if (bt == null) return -1;
+          return bt.compareTo(at);
+        });
+      return list;
+    });
+  }
+
+  // ─── Charger les conversations du membre (one-shot) ───────────────────────
   Future<void> chargerConversations(String membreId) async {
     _isLoading = true;
     notifyListeners();
     try {
       final snapshot = await _db
-          .collection('conversations')
+          .collection(AppConstants.colConversations)
           .where('participantsIds', arrayContains: membreId)
-          .orderBy('dernierMessageAt', descending: true)
           .get();
-      _conversations =
-          snapshot.docs.map((d) => Conversation.fromFirestore(d)).toList();
+      _conversations = snapshot.docs
+          .map((d) => Conversation.fromFirestore(d))
+          .toList()
+        ..sort((a, b) {
+          final at = a.dernierMessageAt;
+          final bt = b.dernierMessageAt;
+          if (at == null && bt == null) return 0;
+          if (at == null) return 1;
+          if (bt == null) return -1;
+          return bt.compareTo(at);
+        });
       _errorMessage = null;
     } catch (e) {
       _errorMessage = e.toString();
@@ -45,9 +83,8 @@ class MessageController extends ChangeNotifier {
 
   // ─── Charger les messages d'une conversation ──────────────────────────────
   Stream<List<Message>> streamMessages(String conversationId) {
-    _conversationActive = conversationId;
     return _db
-        .collection('conversations')
+        .collection(AppConstants.colConversations)
         .doc(conversationId)
         .collection('messages')
         .orderBy('createdAt')
@@ -61,6 +98,7 @@ class MessageController extends ChangeNotifier {
     required String expediteurId,
     required String expediteurNom,
     required String contenu,
+    required List<String> participantsIds,
   }) async {
     try {
       final message = {
@@ -73,20 +111,29 @@ class MessageController extends ChangeNotifier {
       };
 
       await _db
-          .collection('conversations')
+          .collection(AppConstants.colConversations)
           .doc(conversationId)
           .collection('messages')
           .add(message);
 
-      // Mettre à jour la conversation
-      await _db
-          .collection('conversations')
-          .doc(conversationId)
-          .update({
+      // Incrémenter les non-lus UNIQUEMENT pour les autres participants (pas l'expéditeur)
+      Map<String, dynamic> updateData = {
         'dernierMessage': contenu,
         'dernierMessageAt': FieldValue.serverTimestamp(),
-        'messageNonLus': FieldValue.increment(1),
-      });
+        'dernierMessageExpId': expediteurId,
+      };
+
+      // Incrémenter le compteur pour chaque participant sauf l'expéditeur
+      for (String participantId in participantsIds) {
+        if (participantId != expediteurId) {
+          updateData['messageNonLusParMembre.$participantId'] = FieldValue.increment(1);
+        }
+      }
+
+      await _db
+          .collection(AppConstants.colConversations)
+          .doc(conversationId)
+          .update(updateData);
 
       return true;
     } catch (e) {
@@ -104,9 +151,8 @@ class MessageController extends ChangeNotifier {
     required String nom2,
   }) async {
     try {
-      // Chercher conversation existante
       final existing = await _db
-          .collection('conversations')
+          .collection(AppConstants.colConversations)
           .where('participantsIds', arrayContains: membreId1)
           .get();
 
@@ -118,16 +164,13 @@ class MessageController extends ChangeNotifier {
         }
       }
 
-      // Créer nouvelle conversation
-      final docRef = await _db.collection('conversations').add({
+      final docRef = await _db.collection(AppConstants.colConversations).add({
         'participantsIds': [membreId1, membreId2],
-        'participantsNoms': {
-          membreId1: nom1,
-          membreId2: nom2,
-        },
+        'participantsNoms': {membreId1: nom1, membreId2: nom2},
         'dernierMessage': null,
         'dernierMessageAt': null,
-        'messageNonLus': 0,
+        'dernierMessageExpId': null,
+        'messageNonLusParMembre': {membreId1: 0, membreId2: 0},
       });
 
       return docRef.id;
@@ -141,12 +184,15 @@ class MessageController extends ChangeNotifier {
   // ─── Messages du forum (par genre littéraire) ─────────────────────────────
   Stream<List<Message>> streamForumGenre(String genre) {
     return _db
-        .collection('forum')
+        .collection(AppConstants.colForum)
         .where('forumGenre', isEqualTo: genre)
-        .orderBy('createdAt', descending: true)
         .limit(50)
         .snapshots()
-        .map((snap) => snap.docs.map((d) => Message.fromFirestore(d)).toList());
+        .map((snap) {
+      final msgs = snap.docs.map((d) => Message.fromFirestore(d)).toList();
+      msgs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return msgs;
+    });
   }
 
   Future<bool> posterMessageForum({
@@ -156,7 +202,7 @@ class MessageController extends ChangeNotifier {
     required String contenu,
   }) async {
     try {
-      await _db.collection('forum').add({
+      await _db.collection(AppConstants.colForum).add({
         'expediteurId': expediteurId,
         'expediteurNom': expediteurNom,
         'forumGenre': genre,
@@ -177,13 +223,11 @@ class MessageController extends ChangeNotifier {
   Future<void> marquerCommeLu(String conversationId, String membreId) async {
     try {
       await _db
-          .collection('conversations')
+          .collection(AppConstants.colConversations)
           .doc(conversationId)
-          .update({'messageNonLus': 0});
+          .update({'messageNonLusParMembre.$membreId': 0});
       await chargerConversations(membreId);
-    } catch (e) {
-      // Ignorer silencieusement
-    }
+    } catch (_) {}
   }
 
   void clearError() {

@@ -59,4 +59,30 @@ class Reservation {
       'positionFile': positionFile,
     };
   }
+
+  Reservation copyWith({
+    String? id,
+    String? membreId,
+    String? livreId,
+    String? livreTitre,
+    String? livreAuteur,
+    String? livreCouverture,
+    DateTime? dateReservation,
+    DateTime? dateExpiration,
+    StatutReservation? statut,
+    int? positionFile,
+  }) {
+    return Reservation(
+      id: id ?? this.id,
+      membreId: membreId ?? this.membreId,
+      livreId: livreId ?? this.livreId,
+      livreTitre: livreTitre ?? this.livreTitre,
+      livreAuteur: livreAuteur ?? this.livreAuteur,
+      livreCouverture: livreCouverture ?? this.livreCouverture,
+      dateReservation: dateReservation ?? this.dateReservation,
+      dateExpiration: dateExpiration ?? this.dateExpiration,
+      statut: statut ?? this.statut,
+      positionFile: positionFile ?? this.positionFile,
+    );
+  }
 }
