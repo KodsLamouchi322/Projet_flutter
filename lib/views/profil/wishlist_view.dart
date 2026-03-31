@@ -100,3 +100,5 @@ class _EmptyWishlist extends StatelessWidget {
   }
 }
 
+// Ajout: tri par date d'ajout et filtre par genre
+// lib/views/profil/wishlist_view.dart - updated
