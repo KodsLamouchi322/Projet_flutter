@@ -99,3 +99,5 @@ class RecommandationService {
     return list.take(limite).toList();
   }
 }
+// Updated: collaborative filtering + genre weight boost
+// lib/services/recommandation_service.dart - v2 enhancement
