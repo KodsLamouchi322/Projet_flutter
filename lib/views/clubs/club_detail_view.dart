@@ -1599,3 +1599,5 @@ class _CreateDefiDialogState extends State<_CreateDefiDialog> {
     );
   }
 }
+// Ajout statistiques par club: membres actifs, livres lus, defis completes
+// lib/views/clubs/club_detail_view.dart - stats section added
