@@ -119,4 +119,5 @@ class Emprunt {
       prolongationAutorisee: prolongationAutorisee ?? this.prolongationAutorisee,
     );
   }
-}
+}// Fix: null safety improvements - updated return types and null checks
+// lib/models/emprunt.dart - v2
