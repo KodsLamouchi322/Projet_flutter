@@ -207,3 +207,5 @@ class AuthService {
     }
   }
 }
+// Improved error handling: typed exceptions and retry logic
+// lib/services/auth_service.dart - v2
