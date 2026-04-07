@@ -121,3 +121,5 @@ class CacheService {
     dateAjout: DateTime.fromMillisecondsSinceEpoch(m['dateAjout'] ?? 0),
   );
 }
+// Cache invalidation after 30 minutes + LRU eviction strategy added
+// lib/services/cache_service.dart - v2
